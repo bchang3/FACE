@@ -23,6 +23,7 @@ import FACE
 PREFIX = 'm '
 token='NzQyODgwODEyOTYxMjM1MTA1.XzMjqw.SamNiyezNdCrzRzTQXh2h5SYsfE'
 client = Bot(command_prefix=PREFIX)
+client.remove_command('help')
 
 async def is_owner(ctx):
     return ctx.author.id == 435504471343235072
@@ -35,10 +36,17 @@ async def kill(ctx):
         sys.exit()
 @client.command (name='help')
 async def help(ctx):
-    embed=discord.Embed(title="Help", description="List of commands", color=0x00ff00)
-    embed.add_field(name="m instructions", value="Provides an example of how to use the bot.", inline=False)
-    embed.add_field(name="m cats", value="")
-    await ctx.channel.send(embed=Embed)
+    embed= discord.Embed(
+    title= 'Help',
+    colour= 0x00ff00,
+    timestamp=datetime.datetime.now()
+    )
+    embed.set_author(name='FACE Inc.')
+    embed.add_field(name="m instructions", value="Instructions on how to use the bot to card.", inline=False)
+    embed.add_field(name="m cats", value="Displays the abbreviations used for categories", inline=False)
+    embed.add_field(name="m card", value="m card `category` `term`")
+    await ctx.channel.send(embed=embed)
+
 
     #copy mafia embed
 @client.command (name='instructions')
@@ -48,14 +56,53 @@ async def instructions(ctx):
 async def cats(ctx):
     await ctx.channel.send('`sci`, `fa`,`hist`,`geo`,`lit`,`ss`,`ce`,`myth`,`religion`,`trash`')
 @client.command (name='card')
-async def card(ctx,category = None,*term = None):
+async def card(ctx,category=None,*terms):
     if ctx.message.author.id == 435504471343235072 or ctx.message.author.id == 483405210274889728 or ctx.guild.id == 634580485951193089:
-        if category = None or term = None:
+        if category == None or terms == None:
             await ctx.channel.send('You used the wrong format! Use the command `m card *category* *term*`, e.g. `m card sci proton`')#i need access to the other part plz
-        term = ' '.join(term)
-        await ctx.channel.send('Beginning the carding process...')
+        word = str()
+        separated_terms = []
+        new_numbers = []
+        for x in terms:
+            if x[0] == '[':
+                if len(new_numbers) > 0:
+                    await ctx.channel.send('You specified difficulty twice!')
+                    return
+                if x[-1] != ']':
+                    await ctx.channel.send('Please do not use spaces when specifying difficulty!')
+                    return
+                else:
+                    numbers = x[1:-1]
+                    if len(numbers) == 0:
+                        await ctx.channel.send('You didn\'t put anything in the brackets!')
+                        return
+                    numbers = numbers.split(',')
+                    for entry in numbers:
+                        if '-' in entry:
+                            for num in list(range(int(entry[0]),int(entry[-1])+1)):
+                                new_numbers.append(num)
+                        else:
+                            new_numbers.append(entry)
+                    new_numbers = list(map(int,new_numbers))
+                    new_numbers = list(set(new_numbers))
+                continue
+            if x[-1] == ',':
+                if len(word) == 0:
+                    word = x[:-1]
+                else:
+                    word = word + ' ' + x[:-1]
+                separated_terms.append(word)
+                word = str()
+            else:
+                if len(word) == 0:
+                    word = x
+                else:
+                    word = word + ' ' + x
+        separated_terms.append(word)
+        difficulty = new_numbers[:]
+        await ctx.channel.send(f'Beginning the carding process... Estimated time: `{len(separated_terms)*20} seconds`')
         try:
-            full_path = await FACE.get_csv(term,category)
+            full_path, total_cards = await FACE.get_csv(separated_terms,category,ctx.author.id,difficulty,ctx)
         except:
             await ctx.channel.send('There was a problem! Please try again.')
             return
@@ -63,7 +110,8 @@ async def card(ctx,category = None,*term = None):
             await ctx.channel.send('That is not a valid category!')
             return
         with open(full_path, 'rb') as fp:
-            await ctx.channel.send(file=discord.File(fp, f'{term} (click to download).csv'))
+            await ctx.channel.send(file=discord.File(fp, f'{ctx.author.name}\'s {category} cards (click to download).csv'))
+        await ctx.channel.send(f'Around {total_cards} cards made!')
         await asyncio.sleep(7)
         os.remove(full_path)
     else:

@@ -24,21 +24,39 @@ cat_dict = {
     'hist': 18,
     'geo': 20,
     'ce':  26,
+    'all': 'all',
+}
+difficulty_dict = {
+    1: 'middle_school',
+    2: 'easy_high_school',
+    3: 'regular_high_school',
+    4: 'hard_high_school',
+    5: 'national_high_school',
+    6: 'easy_college',
+    7: 'regular_college',
+    8: 'hard_college',
+    9: 'open'
 }
 def newest(path):
     files = os.listdir(path)
     paths = [os.path.join(path, basename) for basename in files]
-    return max(paths, key=os.path.getctime)
-async def get_file(query,category):
+    return max(paths, key=os.path.getctime)#hey hey
+async def get_file(query,category, difficulty):
+    query.replace(' ','%20')
+    if category == 'all':
+        url = f'https://www.quizdb.org/?query={query}&search_type%5B0%5D=Answer&question_type%5B0%5D=Tossup'
+    else:
+        url = f'https://www.quizdb.org/?query={query}&category%5B0%5D={category}&search_type%5B0%5D=Answer&question_type%5B0%5D=Tossup'
+    if len(difficulty) > 0:
+        for i,x in enumerate(difficulty):
+            phrase = difficulty_dict.get(x)
+            url = url + f'&difficulty%5B{i}%5D={phrase}'
     options = Options()
     ua = UserAgent()
     userAgent = ua.random
     options.add_argument(f'user-agent={userAgent}')
     options.add_argument("--disable-extensions")
     driver = webdriver.Chrome(chrome_options = options, executable_path = 'Desktop/AVOCADO/chromedriver')
-
-    query.replace(' ','%20')
-    url = f'https://www.quizdb.org/?query={query}&category%5B0%5D={category}&search_type%5B0%5D=Answer&question_type%5B0%5D=Tossup'
     driver.get(url)
     content = driver.page_source
     await asyncio.sleep(6)
@@ -55,12 +73,52 @@ async def get_file(query,category):
     driver.quit()
     file_name = f"Downloads/{query.replace(' ','_')}.txt"
     return file_name
+def complete_replace_line(file_name):
+    arr = [r"\[\D.*\]",r'&.*',r'\(.*?\)',r'\{.*?\}']
+    patterns=[r'\d\.\n.*\n.*\nTossup:.', r"##.*",r'Number.*\nNumber.*\n']
+    for i in arr:
+        fin = open(file_name, "rt")
+        data = fin.read()
+        replacement = re.sub(i, '', data)
+        data = replacement
+        fin.close()
+        fin = open(file_name, "wt")
+        fin.write(data)
+        fin.close()
+    for x in range(len(patterns)):
+        fin = open(file_name, "rt")
+        data = fin.read()
+        replacement = re.sub(patterns[x], ' ', data)
+        data = replacement
+        fin.close()
+        fin = open(file_name, "wt")
+        fin.write(data)
+        fin.close()
+    fin = open(file_name, "rt")
+    data = fin.read()
+    p = data.strip("\n").split("ANSWER: ")
+    fin.close()
+    print(p)
+
+def replace_bonus(file_name, term=None):
+    arr = [r"\[\D.*\]",r'&.*']
+    testers = [r""]
+    for i in arr:
+        fin = open(file_name, "rt")
+        data = fin.read()
+        replacement = re.sub(i, '', data)
+        data = replacement
+        fin.close()
+        fin = open(file_name, "wt")
+        fin.write(data)
+        fin.close()
 def replace_line(file_name, term):
-    testers = [r'\[[^\]]+\]', r'\(.*?\)',r'&.*']
-    patterns = [r"\n\d.*\n.*\n.*\nBONUS: ", r"\n\d.*\n.*\n.*\nTOSSUP: ", r"\nANSWER: .*\n", r"##.*", r"Number.*\nNumber.*\n", "For 10 points each.*", r"\nANSWER:.*\n", r"\n\d", r"\s\n"]
-    replacements = ['  ', 'No. ', 'no. ']
+    term = term.strip().replace('.', '')
+    testers = [r'\[[^\]]+\]', r'\(.*?\)',r'\{.*?\}',r'&.*']
+    patterns = [r"\n\d.*\n.*\n.*\nBONUS: ", r"\n\d.*\n.*\n.*\nTOSSUP: ", r"\nANSWER: .*\n", r"##.*", r"Number.*\nNumber.*\n", r"For 10 points, .*?\w ", r"For 10 points each.*", r"\nANSWER:.*\n", r"\n\d", r"\s\n"]
+    replacements = ['  ', 'No. ', 'no. ', 'et. al.', 'et al.','Â', '►']
     for x in range(len(testers)):
-        fin = open(file_name, "rt") 
+        fin = open(file_name, "rt")
         data = fin.read()
         replacement = re.sub(testers[x], '', data)
         data = replacement
@@ -72,21 +130,30 @@ def replace_line(file_name, term):
     data = fin.read()
     ans = re.findall(r'ANSWER:.*', data)
     for i in ans:
-        i = i[len(term)-2:].strip()
-        if i != term:
-            fin = open(file_name)
-            pattern=re.sub(fr'\d\.*\n.*\n.*\n.*\nANSWER: {i}','',data)
-            data = pattern
-            fin.close()
-            fin = open(file_name, "wt")
-            fin.write(data)
-            fin.close()
+        orig_i = i[7:].strip()
+        i = i[7:].strip().replace('.', '').casefold()
+        if i == term.casefold():
+            continue
+        if i != term.casefold() and i != term.casefold()+"s":
+            # print(i)
+            print(orig_i)
+            patterns_2=[fr'\d\.*\n.*\n.*\n.*\nANSWER:.*{i}', fr'\d\.*\n.*\n.*\n.*\nANSWER:.*{i}'+'s']
+            for j in patterns_2:
+                fin = open(file_name)
+                p=re.sub(j,'',data)
+                data = p
+                fin.close()
+                fin = open(file_name, "wt")
+                fin.write(data)
+                fin.close()
     for x in range(len(replacements)):
         fin = open(file_name, "rt")
         data = fin.read()
         replacer=data.replace(replacements[x],' ')
         if replacements[x] == 'No. ' or replacements[x] == 'no. ':
             replacer = data.replace(replacements[x],"#")
+        elif replacements[x] == 'et. al.' or replacements[x]=='et al.':
+            replacer = data.replace(replacements[x],'and others')
         data=replacer
         fin = open(file_name, "wt")
         fin.write(data)
@@ -103,24 +170,32 @@ def replace_line(file_name, term):
     # tokenizer = nltk.data.load('tokenizers/punkt/PY3/english.pickle')
     # data = tokenizer.tokenize(data)
     # print(data)
-async def get_csv(term,category):
+async def get_csv(terms,category,id, difficulty,ctx):
+    total_cards = 0
+    full_path = f"Desktop/discordpy/temp/{category}{id}_cards.csv"
+    try:
+        f = open(full_path,"x")
+    except:
+        os.remove(full_path)
+        f = open(full_path,"x")
+    f.close()
     num = cat_dict.get(category)
     if num == None:
         return None
-    file_name = await get_file(term, num)
-    if file_name == None:
-        return None
-    replace_line(file_name, term)
-    f = open(file_name)
-    text = f.read()
-    f.close()
-    sentences = sent_tokenize(text)
-    full_path = "Desktop/discordpy/temp/cards.csv"
-    f = open(full_path,"x")
-    f.close()
-    with open(full_path, mode='w') as card_csv:
-        for sentence in sentences:
-            card_writer = csv.writer(card_csv, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-            card_writer.writerow([sentence,term])
-    os.remove(file_name)
-    return full_path
+    for term in terms:
+        file_name = await get_file(term, num, difficulty)
+        if file_name == None:
+            await ctx.channel.send(f'Error on {term}.')
+            continue
+        replace_line(file_name, term)
+        f = open(file_name)
+        text = f.read()
+        f.close()
+        sentences = sent_tokenize(text)
+        with open(full_path, mode='a') as card_csv:
+            for sentence in sentences:
+                card_writer = csv.writer(card_csv, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+                card_writer.writerow([sentence,term])
+                total_cards += 1
+        os.remove(file_name)
+    return full_path, total_cards

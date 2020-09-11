@@ -19,11 +19,16 @@ import nltk
 from nltk.tokenize import sent_tokenize
 import csv
 import FACE
+from fuzzywuzzy import fuzz
+from fuzzywuzzy import process
 
 PREFIX = 'm '
 token='NzQyODgwODEyOTYxMjM1MTA1.XzMjqw.SamNiyezNdCrzRzTQXh2h5SYsfE'
 client = Bot(command_prefix=PREFIX)
 client.remove_command('help')
+
+in_pk = []
+close_pk = []
 
 async def is_owner(ctx):
     return ctx.author.id == 435504471343235072
@@ -51,18 +56,175 @@ async def help(ctx):
     #copy mafia embed
 @client.command (name='instructions')
 async def instructions(ctx):
-    await ctx.channel.send('Use the command `m card *category* *term*`, e.g. `m card sci proton`. After about 15 seconds, the bot will send a file that you can download and import into anki!')
+    await ctx.channel.send('Use the command `m card *category* [difficulty] *term*`, e.g. `m card sci [3-5,7] proton`. After about 15 seconds, the bot will send a file that you can download and import into anki!')
 @client.command (name='cats')
 async def cats(ctx):
     await ctx.channel.send('`sci`, `fa`,`hist`,`geo`,`lit`,`ss`,`ce`,`myth`,`religion`,`trash`')
+@client.command (name='pk')
+async def pk(ctx,category=None,*difficulty):
+    def close(id):
+        global close_pk
+        if id not in close_pk:
+            return False
+        return True
+    global in_pk
+    global close_pk
+    if ctx.author.id in in_pk:
+        if category == 'end':
+            close_pk.append(ctx.author.id )
+        else:
+            await ctx.channel.send('You are already in a pk! Use `m pk end` to end a pk.')
+        return
+    in_pk.append(ctx.author.id)
+    def pred(m):
+        return m.author == ctx.author and m.channel == ctx.channel
+    if ctx.message.author.id == 435504471343235072 or ctx.message.author.id == 483405210274889728 or ctx.guild.id == 634580485951193089:
+        if category == None:
+            await ctx.channel.send('You used the wrong format! Use the command `m pk *category* *[difficulty]*, e.g. `m pk sci [3-7]` or `m pk biology [1-9]`')
+    new_numbers = []
+    for x in difficulty:
+        if x[0] == '[':
+            if len(new_numbers) > 0:
+                await ctx.channel.send('You specified difficulty twice!')
+                return
+            if x[-1] != ']':
+                await ctx.channel.send('Please do not use spaces when specifying difficulty!')
+                return
+            else:
+                numbers = x[1:-1]
+                if len(numbers) == 0:
+                    await ctx.channel.send('You didn\'t put anything in the brackets!')
+                    return
+                numbers = numbers.split(',')
+                for entry in numbers:
+                    if '-' in entry:
+                        for num in list(range(int(entry[0]),int(entry[-1])+1)):
+                            new_numbers.append(num)
+                    else:
+                        new_numbers.append(entry)
+                new_numbers = list(map(int,new_numbers))
+                new_numbers = list(set(new_numbers))
+    difficulty = new_numbers[:]
+    bonuses = await FACE.get_bonus(category,difficulty)
+    if bonuses == None:
+        await ctx.channel.send('That is not a valid category!')
+        return
+    else:
+        game_end = False
+        total_points = 0
+        bonuses_heard = 0
+        id = ctx.author.id
+        while True and game_end == False and close(id) == False:
+            bonuses = await FACE.get_bonus(category,difficulty)
+            no_response = 0
+            for i in range(5):
+                if game_end == True or close(id) == True:
+                    break
+                points = 0
+                possible_points = 0
+                for num in range(3):
+                    if game_end == True or close(id) == True:
+                        break
+                    possible_points += 10
+                    embed = discord.Embed (
+                    title=f'Question {i+1} ~ {bonuses[i][0][1]}',
+                    colour=	0x56cef0,
+                    timestamp=datetime.datetime.now()
+                    )
+                    embed.set_thumbnail(url=ctx.author.avatar_url)
+                    if num == 0:
+                        embed.add_field(name='\u200b',value = f'{bonuses[i][0][0]}')
+                    embed.add_field(name='\u200b',value = f'**---**         {bonuses[i][num+1][0]}',inline=False)
+                    embed.set_footer(text='You have 12 seconds...')
+                    await ctx.channel.send(embed=embed)
+                    try:
+                        msg = await client.wait_for('message', check=pred,timeout=10)
+                    except asyncio.TimeoutError:
+                        await ctx.channel.send(bonuses[i][num+1][1])
+                        if no_response >= 4:
+                            embed = discord.Embed (
+                            title=f'PK RESULTS:',
+                            colour=	0x303845,
+                            timestamp=datetime.datetime.now()
+                            )
+                            embed.set_thumbnail(url=ctx.author.avatar_url)
+                            if bonuses_heard == 0:
+                                ppb = 0
+                            else:
+                                ppb = total_points/bonuses_heard
+                            embed.add_field(name='**PPB**:',value=f'{ppb:.3f}')
+                            await ctx.channel.send(embed=embed)
+                            game_end = True
+                            break
+                        no_response += 1
+                    else:
+                        no_response = 0
+                        similarity = fuzz.ratio(bonuses[i][num+1][2].casefold(),msg.content.casefold())
+                        if similarity > 75:
+                            points += 10
+                            await ctx.channel.send(f'**{points}**/{possible_points} :white_check_mark:')
+                            correct = True
+                        else:
+                            await ctx.channel.send(f'**{points}**/{possible_points} :x:')
+                            correct = False
+                        await ctx.channel.send(f'ANSWER: {bonuses[i][num+1][1]}')
+                        if 40 <= similarity <= 75:
+                            await ctx.channel.send('Were you correct? Respond with `y` or `n`')
+                            try:
+                                msg = await client.wait_for('message', check=pred,timeout=10)
+                            except asyncio.TimeoutError:
+                                None
+                            else:
+                                if msg.content.lower().startswith('n'):
+                                        await ctx.channel.send(f'**{points}**/{possible_points} :x:')
+                                elif msg.content.lower().startswith('y'):
+                                    points += 10
+                                    await ctx.channel.send(f'**{points}**/{possible_points} :white_check_mark:')
+                                else:
+                                    await ctx.channel.send('Not a valid response!')
+                        await ctx.channel.send(f'Similarity is {fuzz.ratio(bonuses[i][num+1][2].casefold(),msg.content.casefold())}')
+                    await asyncio.sleep(1)
+                total_points += points
+                await asyncio.sleep(5)
+                bonuses_heard += 1
+                # embed.add_field(name = f'{num+1}.',value = f'{bonuses[i][num+1][1]}',inline=False)
+        if id in close_pk:
+            close_pk.remove(id)
+            embed = discord.Embed (
+            title=f'PK RESULTS:',
+            colour=	0x303845,
+            timestamp=datetime.datetime.now()
+            )
+            embed.set_thumbnail(url=ctx.author.avatar_url)
+            if bonuses_heard == 0:
+                ppb = 0
+            else:
+                ppb = total_points/bonuses_heard
+            embed.add_field(name='**PPB**:',value=f'{ppb:.3f}')
+            await ctx.channel.send(embed=embed)
+        if id in in_pk:
+            in_pk.remove(id)
 @client.command (name='card')
 async def card(ctx,category=None,*terms):
     if ctx.message.author.id == 435504471343235072 or ctx.message.author.id == 483405210274889728 or ctx.guild.id == 634580485951193089:
         if category == None or terms == None:
-            await ctx.channel.send('You used the wrong format! Use the command `m card *category* *term*`, e.g. `m card sci proton`')#i need access to the other part plz
+            await ctx.channel.send('You used the wrong format! Use the command `m card *category* *[difficulty]* *term*`, e.g. `m card sci [3-7] proton` or `m card sci biology all`')#i need access to the other part plz
         word = str()
         separated_terms = []
         new_numbers = []
+        terms = list(terms)
+        if 'all' in terms:
+            await ctx.channel.send('`all` has been temporarily disabled')
+            return
+            # term_by_term = False
+            # terms.remove('all')
+        else:
+            term_by_term = True
+        if 'raw' in terms:
+            raw = True
+            terms.remove('raw')
+        else:
+            raw = False
         for x in terms:
             if x[0] == '[':
                 if len(new_numbers) > 0:
@@ -98,14 +260,21 @@ async def card(ctx,category=None,*terms):
                     word = x
                 else:
                     word = word + ' ' + x
-        separated_terms.append(word)
+        if word != '':
+            separated_terms.append(word)
+        if len(separated_terms) == 0:
+            term_by_term = False
         difficulty = new_numbers[:]
-        await ctx.channel.send(f'Beginning the carding process... Estimated time: `{len(separated_terms)*20} seconds`')
-        try:
-            full_path, total_cards = await FACE.get_csv(separated_terms,category,ctx.author.id,difficulty,ctx)
-        except:
-            await ctx.channel.send('There was a problem! Please try again.')
+        await ctx.channel.send(f'Beginning the carding process... Estimated time: `{len(separated_terms)/8.6:.4f} seconds`')
+        # try:
+        result = await FACE.get_csv(separated_terms,category,ctx.author.id,difficulty,term_by_term,raw)
+        if result == None:
+            await ctx.channel.send('That is not a valid category!')
             return
+        full_path, total_cards = result
+        # except:
+        #     await ctx.channel.send('There was a problem! Please try again.')
+        #     return
         if full_path == None:
             await ctx.channel.send('That is not a valid category!')
             return
@@ -119,11 +288,11 @@ async def card(ctx,category=None,*terms):
 @client.command (name='info',aliases=['details'])
 async def info(ctx):
     embed = discord.Embed (
-    title='The Cataclysm:',
+    title='FACE',
     colour=	0x7d99ff,
     timestamp=datetime.datetime.now()
     )
-    embed.set_author(name='The Mafia Inc.')
+    embed.set_author(name='FACE Inc.')
     embed.set_thumbnail(url='https://media.discordapp.net/attachments/626811419815444490/631882087280017428/silhouette-3073924_960_720.png?width=300&height=600')
     embed.add_field(name='Creators of this bot:', value =f'B3nj1#7587/<@{str(435504471343235072)}> and Shozen#5061/<@{483405210274889728}>', inline=True)
     embed.add_field(name='Programming language:', value ='Python 3.6.3', inline=True)

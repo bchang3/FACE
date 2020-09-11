@@ -12,165 +12,205 @@ import nltk
 from nltk.tokenize import sent_tokenize
 import csv
 import asyncio
+import psycopg2
+from sentence_similarity import compare_sentences
+import random
 
-cat_dict = {
-    'sci': 17,
-    'fa': 21,
-    'myth': 14,
-    'religion': 19,
-    'trash': 16,
-    'ss': 22,
-    'lit': 15,
-    'hist': 18,
-    'geo': 20,
-    'ce':  26,
-    'all': 'all',
+def postgres_connect():
+    conn = psycopg2.connect(
+    host = 'localhost',
+    user = 'KevinChang',
+    database = 'quizdb'
+    )
+    cur = conn.cursor()
+    return conn, cur
+first_cat_dict = cat_dict = {
+    'sci': 'science',
+    'fa': 'fine arts',
+    'myth': 'mythology',
+    'religion': 'religion',
+    'trash': 'trash',
+    'ss': 'social science',
+    'lit': 'literature',
+    'hist': 'history',
+    'geo': 'geography',
+    'ce':  'current events',
+    'philo': 'philosophy'
 }
-difficulty_dict = {
-    1: 'middle_school',
-    2: 'easy_high_school',
-    3: 'regular_high_school',
-    4: 'hard_high_school',
-    5: 'national_high_school',
-    6: 'easy_college',
-    7: 'regular_college',
-    8: 'hard_college',
-    9: 'open'
-}
-def newest(path):
-    files = os.listdir(path)
-    paths = [os.path.join(path, basename) for basename in files]
-    return max(paths, key=os.path.getctime)#hey hey
-async def get_file(query,category, difficulty):
-    query.replace(' ','%20')
-    if category == 'all':
-        url = f'https://www.quizdb.org/?query={query}&search_type%5B0%5D=Answer&question_type%5B0%5D=Tossup'
+conn, cur = postgres_connect()
+
+cat_dict = dict()
+cur.execute('SELECT * FROM categories')
+cat_rows = cur.fetchall()
+for row in cat_rows:
+    cat_dict[row[1].casefold()] = int(row[0])
+cat_dict['all'] = 'all'
+
+subcat_dict = dict()
+cur.execute('SELECT * FROM subcategories')
+subcat_rows = cur.fetchall()
+for row in subcat_rows:
+    subcat_dict[row[1].casefold()] = int(row[0])
+
+cur.execute('SELECT * FROM tournaments')
+tournament_rows = cur.fetchall()
+difficulty_dict = dict()
+for row in tournament_rows:
+    difficulty_dict[int(row[0])] = int(row[3])
+
+def last_two(arr):
+    new = (arr[1],arr[2])
+    return new
+
+async def get_tossup(query,category,subcategory,difficulty):
+    conn, cur = postgres_connect()
+    if category == 'all' and query != None:
+        query = query.replace(' ',' & ')
+        executor = f"SELECT tournament_id,text,answer FROM tossups WHERE to_tsvector('english',answer) @@ to_tsquery('english','{query}')"
+    elif query == None and subcategory == None:
+        executor = f"SELECT tournament_id,text,answer FROM tossups WHERE category_id = '{category}'"
+    elif query == None and subcategory != None:
+        executor = f"SELECT tournament_id,text,answer FROM tossups WHERE subcategory_id = '{subcategory}'"
     else:
-        url = f'https://www.quizdb.org/?query={query}&category%5B0%5D={category}&search_type%5B0%5D=Answer&question_type%5B0%5D=Tossup'
+        query = query.replace(' ',' & ')
+        if subcategory:
+            executor = f"SELECT tournament_id,text,answer FROM tossups WHERE to_tsvector('english',answer) @@ to_tsquery('english','{query}') AND subcategory_id = '{subcategory}'"
+        else:
+            executor = f"SELECT tournament_id,text,answer FROM tossups WHERE to_tsvector('english',answer) @@ to_tsquery('english','{query}') AND category_id = '{category}'"
+    cur.execute(executor)
+    results = cur.fetchall()
     if len(difficulty) > 0:
-        for i,x in enumerate(difficulty):
-            phrase = difficulty_dict.get(x)
-            url = url + f'&difficulty%5B{i}%5D={phrase}'
-    options = Options()
-    ua = UserAgent()
-    userAgent = ua.random
-    options.add_argument(f'user-agent={userAgent}')
-    options.add_argument("--disable-extensions")
-    driver = webdriver.Chrome(chrome_options = options, executable_path = 'Desktop/AVOCADO/chromedriver')
-    driver.get(url)
-    content = driver.page_source
-    await asyncio.sleep(6)
-    # load_button = driver.find_element_by_xpath("*//button[@class='ui button' and text()='Load All']")
-    try:
-        download_button = driver.find_element_by_xpath("*//*[@id='quizdb-page']/div/div[3]/div/div[1]/div[1]/div/div[2]/a[1]")
-    except:
-        driver.quit()
+        for i,res in enumerate(results[:]):
+            if difficulty_dict.get(res[0]) not in difficulty:
+                if res in results:
+                    results.remove(res)
+    results = list(map(last_two,results))
+    return results
+async def get_bonus(category,difficulty):
+    conn, cur = postgres_connect()
+    subcategory = None
+    if first_cat_dict.get(category.casefold()):
+        category = first_cat_dict.get(category.casefold())
+    # elif first_subcat_dict.get(category.casefold()):
+    #     subcategory = first_subcat_dict.get(category.casefold())
+    if cat_dict.get(category.casefold()):
+        category = cat_dict.get(category.casefold())
+    # elif subcat_dict.get(category.casefold()):
+    #     subcategory = subcat_dict.get(category.casefold())
+    else:
+        category = None
+    if category == None and subcategory == None:
         return None
-    download_button.click()
-    await asyncio.sleep(7)
-    file_name = newest('Downloads')
-    os.rename(file_name,f"Downloads/{query.replace(' ','_')}.txt")
-    driver.quit()
-    file_name = f"Downloads/{query.replace(' ','_')}.txt"
-    return file_name
-def complete_replace_line(file_name):
-    arr = [r"\[\D.*\]",r'&.*',r'\(.*?\)',r'\{.*?\}']
-    patterns=[r'\d\.\n.*\n.*\nTossup:.', r"##.*",r'Number.*\nNumber.*\n']
-    for i in arr:
-        fin = open(file_name, "rt")
-        data = fin.read()
-        replacement = re.sub(i, '', data)
-        data = replacement
-        fin.close()
-        fin = open(file_name, "wt")
-        fin.write(data)
-        fin.close()
-    for x in range(len(patterns)):
-        fin = open(file_name, "rt")
-        data = fin.read()
-        replacement = re.sub(patterns[x], ' ', data)
-        data = replacement
-        fin.close()
-        fin = open(file_name, "wt")
-        fin.write(data)
-        fin.close()
-    fin = open(file_name, "rt")
-    data = fin.read()
-    p = data.strip("\n").split("ANSWER: ")
-    fin.close()
-    print(p)
-
-def replace_bonus(file_name, term=None):
-    arr = [r"\[\D.*\]",r'&.*']
-    testers = [r""]
-    for i in arr:
-        fin = open(file_name, "rt")
-        data = fin.read()
-        replacement = re.sub(i, '', data)
-        data = replacement
-        fin.close()
-        fin = open(file_name, "wt")
-        fin.write(data)
-        fin.close()
-def replace_line(file_name, term):
-    term = term.strip().replace('.', '')
-    testers = [r'\[[^\]]+\]', r'\(.*?\)',r'\{.*?\}',r'&.*']
-    patterns = [r"\n\d.*\n.*\n.*\nBONUS: ", r"\n\d.*\n.*\n.*\nTOSSUP: ", r"\nANSWER: .*\n", r"##.*", r"Number.*\nNumber.*\n", r"For 10 points, .*?\w ", r"For 10 points each.*", r"\nANSWER:.*\n", r"\n\d", r"\s\n"]
-    replacements = ['  ', 'No. ', 'no. ', 'et. al.', 'et al.','Â', '►']
-    for x in range(len(testers)):
-        fin = open(file_name, "rt")
-        data = fin.read()
-        replacement = re.sub(testers[x], '', data)
-        data = replacement
-        fin.close()
-        fin = open(file_name, "wt")
-        fin.write(data)
-        fin.close()
-    fin = open(file_name,"rt")
-    data = fin.read()
-    ans = re.findall(r'ANSWER:.*', data)
-    for i in ans:
-        orig_i = i[7:].strip()
-        i = i[7:].strip().replace('.', '').casefold()
-        if i == term.casefold():
-            continue
-        if i != term.casefold() and i != term.casefold()+"s":
-            # print(i)
-            print(orig_i)
-            patterns_2=[fr'\d\.*\n.*\n.*\n.*\nANSWER:.*{i}', fr'\d\.*\n.*\n.*\n.*\nANSWER:.*{i}'+'s']
-            for j in patterns_2:
-                fin = open(file_name)
-                p=re.sub(j,'',data)
-                data = p
-                fin.close()
-                fin = open(file_name, "wt")
-                fin.write(data)
-                fin.close()
+    sub_num = None
+    if category == 'all':
+        executor = f"SELECT tournament_id,id,leadin FROM bonuses WHERE category_id = {category} LIMIT 1000"
+    elif subcategory == None:
+        executor = f"SELECT tournament_id,id,leadin FROM bonuses WHERE category_id = {category}"
+    else:
+        executor = f"SELECT tournament_id,id,leadin FROM bonuses WHERE subcategory_id = {subcategory}"
+    cur.execute(executor)
+    results = cur.fetchall()
+    if len(difficulty) > 0:
+        for i,res in enumerate(results[:]):
+            if difficulty_dict.get(res[0]) not in difficulty:
+                if res in results:
+                    results.remove(res)
+    results = random.sample(results,5)
+    bonuses = []
+    for x in results:
+        executor = f"SELECT text,answer FROM bonus_parts WHERE bonus_id = {x[1]}"
+        cur.execute(executor)
+        parts = cur.fetchall()
+        parts = list(map(new_complete_replace_line_bonus,parts))
+        executor = f"SELECT name FROM tournaments WHERE id = {x[0]}"
+        cur.execute(executor)
+        name = cur.fetchone()[0]
+        print(name)
+        bonuses.append(((x[2],name),parts[0],parts[1],parts[2]))
+    return bonuses
+def new_complete_replace_line(question):
+    s = question[0]
+    a = question[1]
+    #divide between {} and ## in arr
+    patterns = [r"\[\D.*\]",r"\&lt\D.*\&gt;", r'\(.*?\)',r'\{.*?\}', r" For 10 points, .*?\w ", r"For 10 points each.*", r"\n\d"]#r'&.*'
+    replacements = ['No. ', 'no. ', 'et. al.', 'et al.','Â', '►', '\(', '\)', 'Sgt.']
+    for i in patterns:
+        replacement = re.sub(i, ' ', s)
+        if i == " For 10 points, .*?\w ":
+            replacement = re.sub(i, ' Name ', s)
+        s = replacement
+    for i in patterns:
+        replacement = re.sub(i, ' ', a)
+        a = replacement
     for x in range(len(replacements)):
-        fin = open(file_name, "rt")
-        data = fin.read()
-        replacer=data.replace(replacements[x],' ')
-        if replacements[x] == 'No. ' or replacements[x] == 'no. ':
-            replacer = data.replace(replacements[x],"#")
-        elif replacements[x] == 'et. al.' or replacements[x]=='et al.':
-            replacer = data.replace(replacements[x],'and others')
-        data=replacer
-        fin = open(file_name, "wt")
-        fin.write(data)
-        fin.close()
-    for x in range(len(patterns)):
-        fin = open(file_name, "rt")
-        data = fin.read()
-        replacement = re.sub(patterns[x], ' ', data)
-        data = replacement
-        fin.close()
-        fin = open(file_name, "wt")
-        fin.write(data)
-        fin.close()
-    # tokenizer = nltk.data.load('tokenizers/punkt/PY3/english.pickle')
-    # data = tokenizer.tokenize(data)
-    # print(data)
-async def get_csv(terms,category,id, difficulty,ctx):
+        replacement = re.sub(replacements[x], ' ', s)
+        if replacements[x]=='No.' or replacements[x]=='no.':
+            replacement = re.sub(replacements[x], '#', s)
+        elif replacements[x]=='et. al.' or replacements[x]=='et al.':
+            replacement = re.sub(replacements[x], 'and others', s)
+        elif replacements[x]=='Sgt.':
+            replacement = re.sub(replacements[x], '', s)
+        s = replacement
+    s = re.sub(r"\s\n",'',s).strip().replace('  ', '')
+    if ';' in a:
+        a = a.replace(';','')
+    final = (s, a.strip())
+    return final
+def new_complete_replace_line_bonus(question):
+    s = question[0]
+    a = question[1]
+    orig_a = a
+    patterns = [r"\[\D.*\]",r"\&lt\D.*\&gt", r'\(.*?\)',r'\{.*?\}', r" For 10 points, .*?\w ", r"For 10 points each.*", r"\n\d"]#r'&.*'
+    replacements = ['No. ', 'no. ', 'et. al.', 'et al.','Â', '►', '\(', '\)', 'Sgt.']
+    for i in patterns:
+        replacement = re.sub(i, ' ', s)
+        s = replacement
+    for i in patterns:
+        replacement = re.sub(i, ' ', a)
+        a = replacement
+    for x in range(len(replacements)):
+        replacement = re.sub(replacements[x], ' ', s)
+        if replacements[x]=='No.' or replacements[x]=='no.':
+            replacement = re.sub(replacements[x], '#', s)
+        elif replacements[x]=='et. al.' or replacements[x]=='et al.':
+            replacement = re.sub(replacements[x], 'and others', s)
+        elif replacements[x]=='Sgt.':
+            replacement = re.sub(replacements[x], '', s)
+        s = replacement
+    s = re.sub(r"\s\n",'',s).strip().replace('  ', '')
+    if ';' in a:
+        a = a.replace(';','')
+    final = (s, orig_a.strip(),a.strip())
+    return final
+async def get_csv(terms,category,id, difficulty,term_by_term,raw):
+    def write_csv(tossups,term,raw):
+        clues = []
+        global total_cards
+        questions = list(map(new_complete_replace_line,tossups))
+        for question,answer in questions:
+            if term.casefold() not in answer.casefold():
+                continue
+            sentences = sent_tokenize(question)
+            with open(full_path, mode='a') as card_csv:
+                for sentence in sentences:
+                    sentence = sentence.replace('  ', ' ')
+                    if sentence == '':
+                        continue
+                    duplicate = False
+                    if raw == False:
+                        for clue in clues:
+                            score = compare_sentences(clue,sentence)
+                            if  score > 0.43:
+                                # print(f'**{score}**',sentence,'**vs.**',clue)
+                                duplicate = True
+                                break
+                        if duplicate == True:
+                            continue
+                    card_writer = csv.writer(card_csv, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+                    card_writer.writerow([sentence,answer])
+                    clues.append(sentence)
+                    total_cards += 1
+    global total_cards
     total_cards = 0
     full_path = f"Desktop/discordpy/temp/{category}{id}_cards.csv"
     try:
@@ -179,23 +219,25 @@ async def get_csv(terms,category,id, difficulty,ctx):
         os.remove(full_path)
         f = open(full_path,"x")
     f.close()
-    num = cat_dict.get(category)
+    if first_cat_dict.get(category.casefold()):
+        category = first_cat_dict.get(category.casefold())
+    num = cat_dict.get(category.casefold())
+    sub_num = None
     if num == None:
         return None
-    for term in terms:
-        file_name = await get_file(term, num, difficulty)
-        if file_name == None:
-            await ctx.channel.send(f'Error on {term}.')
-            continue
-        replace_line(file_name, term)
-        f = open(file_name)
-        text = f.read()
-        f.close()
-        sentences = sent_tokenize(text)
-        with open(full_path, mode='a') as card_csv:
-            for sentence in sentences:
-                card_writer = csv.writer(card_csv, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-                card_writer.writerow([sentence,term])
-                total_cards += 1
-        os.remove(file_name)
+    if term_by_term == True:
+        for term in terms:
+            tossups = await get_tossup(term, num, sub_num,difficulty)
+            write_csv(tossups,term,raw)
+    else:
+        tossups = await get_tossup(None, num, sub_num, difficulty)
+        write_csv(tossups,term,raw)
     return full_path, total_cards
+
+def main():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    result = loop.run_until_complete(get_bonus(17,None,[4,5,6]))
+    # result = loop.run_until_complete(get_csv(['Albert Einstein'],'Science',5,[],True))
+if __name__ == '__main__':
+    main()

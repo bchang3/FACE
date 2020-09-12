@@ -1,6 +1,11 @@
+import mysql.connector as mysql
 import sys
 import re
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
 import time
+from fake_useragent import UserAgent
+import pickle
 import os
 import nltk.data
 import nltk
@@ -14,13 +19,12 @@ import random
 def postgres_connect():
     conn = psycopg2.connect(
     host = 'localhost',
-    user = 'ec2-user',
-    password = 'TheCataclysm91$(*',
+    user = 'KevinChang',
     database = 'quizdb'
     )
     cur = conn.cursor()
     return conn, cur
-first_cat_dict = {
+first_cat_dict = cat_dict = {
     'sci': 'science',
     'fa': 'fine arts',
     'myth': 'mythology',
@@ -32,13 +36,6 @@ first_cat_dict = {
     'geo': 'geography',
     'ce':  'current events',
     'philo': 'philosophy'
-}
-first_subcat_dict = {
-    'religion:christianity': 'Religion Christianity',
-    'religion:c': 'Religion Christianity',
-    'science:computer-science': 'Science Computer Science',
-    'sci:cs': 'Science Computer Science',
-    'science:cs': 'Science Computer Science'
 }
 conn, cur = postgres_connect()
 
@@ -91,13 +88,17 @@ async def get_tossup(query,category,subcategory,difficulty):
     return results
 async def get_bonus(category,difficulty):
     conn, cur = postgres_connect()
-    subcategory = category
+    subcategory = None
     if first_cat_dict.get(category.casefold()):
         category = first_cat_dict.get(category.casefold())
-    elif first_subcat_dict.get(category.casefold()):
-        subcategory = first_subcat_dict.get(category.casefold())
-    category = cat_dict.get(category.casefold())
-    subcategory = subcat_dict.get(subcategory.casefold())
+    # elif first_subcat_dict.get(category.casefold()):
+    #     subcategory = first_subcat_dict.get(category.casefold())
+    if cat_dict.get(category.casefold()):
+        category = cat_dict.get(category.casefold())
+    # elif subcat_dict.get(category.casefold()):
+    #     subcategory = subcat_dict.get(category.casefold())
+    else:
+        category = None
     if category == None and subcategory == None:
         return None
     sub_num = None

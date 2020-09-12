@@ -187,8 +187,7 @@ async def pk(ctx,category=None,*difficulty):
                             await ctx.channel.send(f'**{points}**/{possible_points} :x:')
                             correct = False
                         await ctx.channel.send(f'ANSWER: {bonuses[i][num+1][1]}')
-                        if 20 <= similarity <= 75:   #;  where should this go follow me
-                            await ctx.channel.send('Were you correct? Respond with `y` or `n`')
+                        if 20 <= similarity <= 75:   #;  where should this go follow m                            await ctx.channel.send('Were you correct? Respond with `y` or `n`')
                             try:
                                 msg = await client.wait_for('message', check=pred,timeout=10)
                             except asyncio.TimeoutError:
@@ -227,7 +226,6 @@ async def pk(ctx,category=None,*difficulty):
 async def practice(ctx):
     def check(reaction, user):
         return user == ctx.author and str(reaction.emoji) == ':b:' or str(reaction.emoji) == ':regional_indicator_b:' or str(reaction.emoji) == ':a:' or str(reaction.emoji) == ':regional_indicator_a:'
-
 
 @client.command (name='card')
 async def card(ctx,category=None,*terms):

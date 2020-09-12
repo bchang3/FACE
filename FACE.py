@@ -21,7 +21,7 @@ def postgres_connect():
     )
     cur = conn.cursor()
     return conn, cur
-first_cat_dict = cat_dict = {
+first_cat_dict = {
     'sci': 'science',
     'fa': 'fine arts',
     'myth': 'mythology',
@@ -33,6 +33,13 @@ first_cat_dict = cat_dict = {
     'geo': 'geography',
     'ce':  'current events',
     'philo': 'philosophy'
+}
+first_subcat_dict = {
+    'religion:christianity': 'Religion Christianity',
+    'religion:c': 'Religion Christianity',
+    'science:computer-science': 'Science Computer Science',
+    'sci:cs': 'Science Computer Science',
+    'science:cs': 'Science Computer Science'
 }
 conn, cur = postgres_connect()
 
@@ -85,17 +92,13 @@ async def get_tossup(query,category,subcategory,difficulty):
     return results
 async def get_bonus(category,difficulty):
     conn, cur = postgres_connect()
-    subcategory = None
+    subcategory = category
     if first_cat_dict.get(category.casefold()):
         category = first_cat_dict.get(category.casefold())
-    # elif first_subcat_dict.get(category.casefold()):
-    #     subcategory = first_subcat_dict.get(category.casefold())
-    if cat_dict.get(category.casefold()):
-        category = cat_dict.get(category.casefold())
-    # elif subcat_dict.get(category.casefold()):
-    #     subcategory = subcat_dict.get(category.casefold())
-    else:
-        category = None
+    elif first_subcat_dict.get(category.casefold()):
+        subcategory = first_subcat_dict.get(category.casefold())
+    category = cat_dict.get(category.casefold())
+    subcategory = subcat_dict.get(subcategory.casefold())
     if category == None and subcategory == None:
         return None
     sub_num = None

@@ -47,16 +47,22 @@ async def help(ctx):
     timestamp=datetime.datetime.now()
     )
     embed.set_author(name='FACE Inc.')
-    embed.add_field(name="m instructions", value="Instructions on how to use the bot to card.", inline=False)
+    embed.add_field(name="m instructions `name of command`", value="In depth instructions on a specific command. e.g. `m instructions card`", inline=False)
     embed.add_field(name="m cats", value="Displays the abbreviations used for categories", inline=False)
-    embed.add_field(name="m card", value="m card `category` `term`")
+    embed.add_field(name="m card", value="m card `category` `difficulty` `term`")
+    embed.add_field(name="m pk", value = "m pk `category` `difficulty` `timed`")
     await ctx.channel.send(embed=embed)
 
 
     #copy mafia embed
 @client.command (name='instructions')
-async def instructions(ctx):
-    await ctx.channel.send('Use the command `m card *category* [difficulty] *term*`, e.g. `m card sci [3-5,7] proton`. After about 15 seconds, the bot will send a file that you can download and import into anki!')
+async def instructions(ctx,command = None):
+    if command == None:
+        await ctx.channel.send('Specify a command after m instructions, e.g. `m instructions card`')
+    elif command == 'card':
+        await ctx.channel.send('**---** Use the command `m card *category* [difficulty] *term(s)*`, e.g. `m card sci [3-5,7] proton`.\n**---** The bot will send a file that you can download and import into anki!\n**---** You can substitue `all` for either the category or for the terms if you want to card entire categories or card specific terms across categories.')
+    elif command == 'pk':
+        await ctx.channel.send('**---** m pk `category` `difficulty` `timed?`, e.g. `m pk sci [4-6] timed` or `m pk sci[4-6]`.\n***---*** Starts a pk practice session.\n **---** Use `m pk end` to end the game.')
 @client.command (name='cats')
 async def cats(ctx):
     await ctx.channel.send('`sci`, `fa`,`hist`,`geo`,`lit`,`ss`,`ce`,`myth`,`religion`,`trash`')
@@ -82,18 +88,26 @@ async def pk(ctx,category=None,*difficulty):
         if category == None:
             await ctx.channel.send('You used the wrong format! Use the command `m pk *category* *[difficulty]*, e.g. `m pk sci [3-7]` or `m pk biology [1-9]`')
     new_numbers = []
+    if 'timed' in difficulty:
+        difficulty.remove('timed')
+        timed = True
+    else:
+        timed = False
     for x in difficulty:
         if x[0] == '[':
             if len(new_numbers) > 0:
                 await ctx.channel.send('You specified difficulty twice!')
+                in_pk.remove(ctx.author.id)
                 return
             if x[-1] != ']':
                 await ctx.channel.send('Please do not use spaces when specifying difficulty!')
+                in_pk.remove(ctx.author.id)
                 return
             else:
                 numbers = x[1:-1]
                 if len(numbers) == 0:
                     await ctx.channel.send('You didn\'t put anything in the brackets!')
+                    in_pk.remove(ctx.author.id)
                     return
                 numbers = numbers.split(',')
                 for entry in numbers:
@@ -108,6 +122,7 @@ async def pk(ctx,category=None,*difficulty):
     bonuses = await FACE.get_bonus(category,difficulty)
     if bonuses == None:
         await ctx.channel.send('That is not a valid category!')
+        in_pk.remove(ctx.author.id)
         return
     else:
         game_end = False
@@ -135,10 +150,14 @@ async def pk(ctx,category=None,*difficulty):
                     if num == 0:
                         embed.add_field(name='\u200b',value = f'{bonuses[i][0][0]}')
                     embed.add_field(name='\u200b',value = f'**---**         {bonuses[i][num+1][0]}',inline=False)
-                    embed.set_footer(text='You have 15 seconds...')
+                    if timed == True:
+                        embed.set_footer(text='You have 16 seconds...')
                     await ctx.channel.send(embed=embed)
                     try:
-                        msg = await client.wait_for('message', check=pred,timeout=15)
+                        if timed == True:
+                            msg = await client.wait_for('message', check=pred,timeout=16)
+                        else:
+                            msg = await client.wait_for('message', check=pred)
                     except asyncio.TimeoutError:
                         await ctx.channel.send(bonuses[i][num+1][1])
                         if no_response >= 4:
@@ -168,7 +187,7 @@ async def pk(ctx,category=None,*difficulty):
                             await ctx.channel.send(f'**{points}**/{possible_points} :x:')
                             correct = False
                         await ctx.channel.send(f'ANSWER: {bonuses[i][num+1][1]}')
-                        if 40 <= similarity <= 75:
+                        if 20 <= similarity <= 75:   #;  where should this go follow me
                             await ctx.channel.send('Were you correct? Respond with `y` or `n`')
                             try:
                                 msg = await client.wait_for('message', check=pred,timeout=10)
@@ -204,6 +223,12 @@ async def pk(ctx,category=None,*difficulty):
             await ctx.channel.send(embed=embed)
         if id in in_pk:
             in_pk.remove(id)
+@client.command (name='practice')
+async def practice(ctx):
+    def check(reaction, user):
+        return user == ctx.author and str(reaction.emoji) == ':b:' or str(reaction.emoji) == ':regional_indicator_b:' or str(reaction.emoji) == ':a:' or str(reaction.emoji) == ':regional_indicator_a:'
+
+
 @client.command (name='card')
 async def card(ctx,category=None,*terms):
     if ctx.message.author.id == 435504471343235072 or ctx.message.author.id == 483405210274889728 or ctx.guild.id == 634580485951193089:
@@ -315,4 +340,5 @@ async def on_ready():
     print(client.user.name)
     print(client.user.id)
     print('------')
+    await client.change_presence( activity=discord.Game(name='m help',type=0), afk=False)
 client.run(token)

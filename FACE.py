@@ -14,7 +14,7 @@ import random
 def postgres_connect():
     conn = psycopg2.connect(
     host = 'localhost',
-    user = 'KevinChang',
+    user = 'ec2-user',
     database = 'quizdb'
     )
     cur = conn.cursor()

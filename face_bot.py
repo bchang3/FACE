@@ -135,10 +135,10 @@ async def pk(ctx,category=None,*difficulty):
                     if num == 0:
                         embed.add_field(name='\u200b',value = f'{bonuses[i][0][0]}')
                     embed.add_field(name='\u200b',value = f'**---**         {bonuses[i][num+1][0]}',inline=False)
-                    embed.set_footer(text='You have 12 seconds...')
+                    embed.set_footer(text='You have 15 seconds...')
                     await ctx.channel.send(embed=embed)
                     try:
-                        msg = await client.wait_for('message', check=pred,timeout=10)
+                        msg = await client.wait_for('message', check=pred,timeout=15)
                     except asyncio.TimeoutError:
                         await ctx.channel.send(bonuses[i][num+1][1])
                         if no_response >= 4:

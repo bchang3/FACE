@@ -157,7 +157,7 @@ async def pk(ctx,category=None,*difficulty):
                         if timed == True:
                             msg = await client.wait_for('message', check=pred,timeout=16)
                         else:
-                            msg = await client.wait_for('message', check=pred)
+                            msg = await client.wait_for('message', check=pred,timeout=300)
                     except asyncio.TimeoutError:
                         await ctx.channel.send(bonuses[i][num+1][1])
                         if no_response >= 4:
@@ -187,7 +187,8 @@ async def pk(ctx,category=None,*difficulty):
                             await ctx.channel.send(f'**{points}**/{possible_points} :x:')
                             correct = False
                         await ctx.channel.send(f'ANSWER: {bonuses[i][num+1][1]}')
-                        if 20 <= similarity <= 75:   #;  where should this go follow m                            await ctx.channel.send('Were you correct? Respond with `y` or `n`')
+                        if 20 <= similarity <= 75:   #;  where should this go follow m
+                            await ctx.channel.send('Were you correct? Respond with `y` or `n`')
                             try:
                                 msg = await client.wait_for('message', check=pred,timeout=10)
                             except asyncio.TimeoutError:

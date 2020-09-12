@@ -1,8 +1,6 @@
 import sys
 import re
 import time
-from fake_useragent import UserAgent
-import pickle
 import os
 import nltk.data
 import nltk

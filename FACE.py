@@ -1,8 +1,5 @@
-import mysql.connector as mysql
 import sys
 import re
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
 import time
 from fake_useragent import UserAgent
 import pickle

@@ -15,6 +15,7 @@ def postgres_connect():
     conn = psycopg2.connect(
     host = 'localhost',
     user = 'ec2-user',
+    password = 'TheCataclysm91$(*',
     database = 'quizdb'
     )
     cur = conn.cursor()

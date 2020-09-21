@@ -20,6 +20,19 @@ def postgres_connect():
     )
     cur = conn.cursor()
     return conn, cur
+color_dict = {
+    'science':0x34cf53,
+    'literature':0xc73232,
+    'fine arts':0xbd93db,
+    'mythology':0x2e1242,
+    'history':0xfaed61,
+    'geography':0x997b53,
+    'trash':0x9da4ab,
+    'current events':0x1882ed,
+    'philosophy': 0xf0ddb9,
+    'social sciences':0xf576be,
+    'religion':0xf7f5f6
+}
 first_cat_dict = {
     'sci': 'science',
     'fa': 'fine arts',
@@ -34,11 +47,128 @@ first_cat_dict = {
     'philo': 'philosophy'
 }
 first_subcat_dict = {
-    'religion:christianity': 'Religion Christianity',
-    'religion:c': 'Religion Christianity',
-    'science:computer-science': 'Science Computer Science',
+    'ce:usa': 'Current Events American',
+    'ce:o': 'Current Events Other',
+    'fa:audiovisual': 'Fine Arts Audiovisual',
+    'fa:av': 'Fine Arts Audiovisual',
+    'fa:american': 'Fine Arts American',
+    'fa:usa': 'Fine Arts American',
+    'fa:auditory': 'Fine Arts Auditory',
+    'fa:a': 'Fine Arts Auditory',
+    'afa': 'Fine Arts Auditory',
+    'fa:british': 'Fine Arts British',
+    'fa:brit': 'Fine Arts British',
+    'fa:european': 'Fine Arts European',
+    'fa:euro': 'Fine Arts European',
+    'fa:opera': 'Fine Arts Opera',
+    'fa:op': 'Fine Arts Opera',
+    'fa:other': 'Fine Arts Other',
+    'fa:o': 'Fine Arts Other',
+    'ofa': 'Fine Arts Other',
+    'fa:world': 'Fine Arts World',
+    'fa:visual': 'Fine Arts Visual',
+    'fa:v': 'Fine Arts Visual',
+    'vfa': 'Fine Arts Visual',
+    'geography:usa': 'Georgaphy American',
+    'geo:usa': 'Geography American',
+    'geography:world': 'Geography World',
+    'geo:world': 'Geography World',
+    'history:usa': 'History American',
+    'hist:usa': 'History American',
+    'history:brit': 'History British',
+    'hist:brit': 'History British',
+    'history:c': 'History Classical',
+    'hist:c': 'History Classical',
+    'history:euro': 'History European',
+    'hist:euro': 'History European',
+    'history:o': 'History Other',
+    'hist:o': 'History Other',
+    'history:world': 'History World',
+    'hist:world': 'History World',
+    'literature:usa': 'Literature American',
+    'lit:usa': 'Literature American',
+    'literature:brit': 'Literature British',
+    'lit:brit': 'Literature British',
+    'literature:c': 'Literature Classical',
+    'lit:c': 'Literature Classical',
+    'literature:euro': 'Literature European',
+    'lit:euro': 'Literature European',
+    'literature:o': 'Literature Other',
+    'lit:o': 'Literature Other',
+    'literature:world': 'Literature World',
+    'lit:world': 'Literature World',
+    'mythology:usa': 'Mythology American',
+    'myth:usa': 'Mythology American',
+    'mythology:cn': 'Mythology Chinese',
+    'myth:cn': 'Mythology Chinese',
+    'mythology:eg': 'Mythology Egyptian',
+    'myth:eg': 'Mythology Egyptian',
+    'mythology:gr': 'Mythology Greco-Roman',
+    'myth:gr': 'Mythology Greco-Roman',
+    'mythology:in': 'Mythology Indian',
+    'myth:in': 'Mythology Indian',
+    'mythology:jp': 'Mythology Japanese',
+    'myth:jp': 'Mythology Japanese',
+    'mythology:no': 'Mythology Norse',
+    'myth:no': 'Mythology Norse',
+    'mythology:oea': 'Mythology Other East Asian',
+    'myth:oea': 'Mythology Other East Asian',
+    'mythology:o': 'Mythology Other',
+    'myth:o': 'Mythology Other',
+    'philosophy:usa': 'Philosophy American',
+    'philo:usa': 'Philosophy American',
+    'philosophy:c': 'Philosophy Classical',
+    'philo:c': 'Philosophy Classical',
+    'philosophy:ea': 'Philosophy East Asian',
+    'philo:ea': 'Philosophy East Asian',
+    'philosophy:euro': 'Philosophy European',
+    'philo:euro': 'Philosophy European',
+    'philosophy:o': 'Philosophy Other',
+    'philo:o': 'Philosophy Other',
+    'religion:usa': 'Religion American',
+    'reli:usa': 'Religion American',
+    'religion:ch': 'Religion Christianity',
+    'reli:ch': 'Religion Christianity',
+    'religion:ea': 'Religion East Asian',
+    'reli:ea': 'Religion East Asian',
+    'religion:islam': 'Religion Islam',
+    'reli:islam': 'Religion Islam',
+    'reli:juda': 'Religion Judaism',
+    'religion:juda': 'Religion Judaism',
+    'religion:o': 'Religion Other',
+    'reli:o': 'Religion Other',
+    'science:usa': 'Science American',
+    'sci:usa': 'Science American',
+    'science:bio': 'Science Biology',
+    'sci:bio': 'Science Biology',
+    'science:chem': 'Science Chemistry',
+    'sci:chem': 'Science Chemistry',
     'sci:cs': 'Science Computer Science',
-    'science:cs': 'Science Computer Science'
+    'science:cs': 'Science Computer Science',
+    'sci:math': 'Science Math',
+    'science:math': 'Science Math',
+    'science:o': 'Science Other',
+    'sci:o': 'Science Other',
+    'science:physics': 'Science Physics',
+    'sci:physics': 'Science Physics',
+    'science:world': 'Science World',
+    'sci:world': 'Science World',
+    'ss:usa': 'Social Science American',
+    'ss:econ': 'Social Science Economics',
+    'ss:economics': 'Social Science Economics',
+    'ss:linguistics': 'Social Science Linguistics',
+    'ss:lang': 'Social Science Linguistics',
+    'ss:o': 'Social Science Other',
+    'ss:psychology': 'Social Science Psychology',
+    'ss:psych': 'Social Science Psychology',
+    'ss:sociology': 'Social Science Sociology',
+    'ss:soci': 'Social Science Sociology',
+    'trash:usa': 'Trash American',
+    'trash:music': 'Trash Music',
+    'trash:o': 'Trash Other',
+    'trash:sports': 'Trash Sports',
+    'trash:tv': 'Trash Television',
+    'trash:vg': 'Trash Video Games',
 }
 conn, cur = postgres_connect()
 
@@ -65,8 +195,19 @@ def last_two(arr):
     new = (arr[1],arr[2])
     return new
 
-async def get_tossup(query,category,subcategory,difficulty):
+async def get_tossup(query,category,difficulty):
     conn, cur = postgres_connect()
+    subcategory = category
+    if first_cat_dict.get(category.casefold()):
+        category = first_cat_dict.get(category.casefold())
+    elif first_subcat_dict.get(category.casefold()):
+        subcategory = first_subcat_dict.get(category.casefold())
+    orig_category = category
+    category = cat_dict.get(category.casefold())
+    orig_subcategory = subcategory
+    subcategory = subcat_dict.get(subcategory.casefold())
+    if category == None and subcategory == None:
+        return None
     if category == 'all' and query != None:
         query = query.replace(' ',' & ')
         executor = f"SELECT tournament_id,text,answer FROM tossups WHERE to_tsvector('english',answer) @@ to_tsquery('english','{query}')"
@@ -96,17 +237,22 @@ async def get_bonus(category,difficulty):
         category = first_cat_dict.get(category.casefold())
     elif first_subcat_dict.get(category.casefold()):
         subcategory = first_subcat_dict.get(category.casefold())
+    orig_category = category
     category = cat_dict.get(category.casefold())
+    orig_subcategory = subcategory
     subcategory = subcat_dict.get(subcategory.casefold())
     if category == None and subcategory == None:
         return None
     sub_num = None
     if category == 'all':
-        executor = f"SELECT tournament_id,id,leadin FROM bonuses WHERE category_id = {category} LIMIT 1000"
+        executor = f"SELECT tournament_id,id,leadin FROM bonuses LIMIT 1000"
+        category = 'ALL'
     elif subcategory == None:
         executor = f"SELECT tournament_id,id,leadin FROM bonuses WHERE category_id = {category}"
+        category = orig_category
     else:
         executor = f"SELECT tournament_id,id,leadin FROM bonuses WHERE subcategory_id = {subcategory}"
+        category = orig_subcategory
     cur.execute(executor)
     results = cur.fetchall()
     if len(difficulty) > 0:
@@ -114,19 +260,36 @@ async def get_bonus(category,difficulty):
             if difficulty_dict.get(res[0]) not in difficulty:
                 if res in results:
                     results.remove(res)
+    num_bonuses = len(results)
     results = random.sample(results,5)
     bonuses = []
     for x in results:
-        executor = f"SELECT text,answer FROM bonus_parts WHERE bonus_id = {x[1]}"
+        executor = f"SELECT text,answer FROM bonus_parts WHERE bonus_id = {x[1]} ORDER BY number"
         cur.execute(executor)
         parts = cur.fetchall()
         parts = list(map(new_complete_replace_line_bonus,parts))
         executor = f"SELECT name FROM tournaments WHERE id = {x[0]}"
         cur.execute(executor)
         name = cur.fetchone()[0]
-        print(name)
         bonuses.append(((x[2],name),parts[0],parts[1],parts[2]))
+    color = color_dict.get(category.lower())
+    misc = (num_bonuses,category.capitalize(),color)
+    bonuses.append(misc)
     return bonuses
+async def get_tournament(tournament):
+    conn, cur = postgres_connect()
+    tournament = tournament.replace(' ',' & ')
+    executor = f"SELECT id FROM tournaments WHERE to_tsvector('english',name) @@ to_tsquery('english','{tournament}')"
+    cur.execute(executor)
+    results = cur.fetchall()
+    try:
+        id = results[0][0]
+    except:
+        return None
+    executor = f"SELECT text,answer FROM tossups WHERE tournament_id = {id}"
+    cur.execute(executor)
+    results = cur.fetchall()
+    return results
 def new_complete_replace_line(question):
     s = question[0]
     a = question[1]
@@ -182,12 +345,13 @@ def new_complete_replace_line_bonus(question):
     final = (s, orig_a.strip(),a.strip())
     return final
 async def get_csv(terms,category,id, difficulty,term_by_term,raw):
-    def write_csv(tossups,term,raw):
+    async def write_csv(tossups,raw,term=None):
         clues = []
+        excess = 0
         global total_cards
         questions = list(map(new_complete_replace_line,tossups))
         for question,answer in questions:
-            if term.casefold() not in answer.casefold():
+            if term != None and term.casefold() not in answer.casefold():
                 continue
             sentences = sent_tokenize(question)
             with open(full_path, mode='a') as card_csv:
@@ -198,39 +362,68 @@ async def get_csv(terms,category,id, difficulty,term_by_term,raw):
                     duplicate = False
                     if raw == False:
                         for clue in clues:
-                            score = compare_sentences(clue,sentence)
-                            if  score > 0.43:
-                                # print(f'**{score}**',sentence,'**vs.**',clue)
-                                duplicate = True
-                                break
+                            if clue[1] == answer:
+                                score = compare_sentences(clue[0],sentence)
+                                if  score > 0.43:
+                                    excess += 1
+                                    print(excess)
+                                    duplicate = True
+                                    break
                         if duplicate == True:
                             continue
                     card_writer = csv.writer(card_csv, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
                     card_writer.writerow([sentence,answer])
-                    clues.append(sentence)
+                    clues.append((sentence,answer))
                     total_cards += 1
     global total_cards
     total_cards = 0
-    full_path = f"Desktop/discordpy/temp/{category}{id}_cards.csv"
+    full_path = f"temp/{category}{id}_cards.csv"
     try:
         f = open(full_path,"x")
     except:
         os.remove(full_path)
         f = open(full_path,"x")
     f.close()
-    if first_cat_dict.get(category.casefold()):
-        category = first_cat_dict.get(category.casefold())
-    num = cat_dict.get(category.casefold())
-    sub_num = None
-    if num == None:
-        return None
     if term_by_term == True:
         for term in terms:
-            tossups = await get_tossup(term, num, sub_num,difficulty)
-            write_csv(tossups,term,raw)
+            tossups = await get_tossup(term,category,difficulty)
+            if tossups == None:
+                return None
+            await write_csv(tossups,raw,term)
     else:
-        tossups = await get_tossup(None, num, sub_num, difficulty)
-        write_csv(tossups,term,raw)
+        tossups = await get_tossup(None,category,difficulty)
+        if tossups == None:
+            return None
+        await write_csv(tossups,raw)
+    return full_path, total_cards
+async def get_csv_tournament(tournament):
+    def write_csv_tournament(tossups):
+        clues = []
+        global total_cards
+        questions = list(map(new_complete_replace_line,tossups))
+        for question,answer in questions:
+            sentences = sent_tokenize(question)
+            with open(full_path, mode='a') as card_csv:
+                for sentence in sentences:
+                    sentence = sentence.replace('  ', ' ')
+                    if sentence == '':
+                        continue
+                    card_writer = csv.writer(card_csv, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+                    card_writer.writerow([sentence,answer])
+                    clues.append(sentence)
+                    total_cards += 1
+    global total_cards
+    total_cards = 0
+    full_path = f"temp/{tournament}{id}_cards.csv"
+    try:
+        f = open(full_path,"x")
+    except:
+        os.remove(full_path)
+        f = open(full_path,"x")
+    tossups = await get_tournament(tournament)
+    if tossups == None:
+        return None
+    write_csv_tournament(tossups)
     return full_path, total_cards
 
 def main():

@@ -10,6 +10,7 @@ import asyncio
 import psycopg2
 from sentence_similarity import compare_sentences
 import random
+from asgiref.sync import sync_to_async
 
 def postgres_connect():
     conn = psycopg2.connect(
@@ -245,7 +246,7 @@ async def get_bonus(category,difficulty):
         return None
     sub_num = None
     if category == 'all':
-        executor = f"SELECT tournament_id,id,leadin FROM bonuses LIMIT 1000"
+        executor =  f"SELECT tournament_id,id,leadin FROM bonuses TABLESAMPLE BERNOULLI(0.5) LIMIT 1000"
         category = 'ALL'
     elif subcategory == None:
         executor = f"SELECT tournament_id,id,leadin FROM bonuses WHERE category_id = {category}"
@@ -264,14 +265,14 @@ async def get_bonus(category,difficulty):
     results = random.sample(results,5)
     bonuses = []
     for x in results:
-        executor = f"SELECT text,answer FROM bonus_parts WHERE bonus_id = {x[1]} ORDER BY number"
+        executor = f"SELECT formatted_text,formatted_answer FROM bonus_parts WHERE bonus_id = {x[1]} ORDER BY number"
         cur.execute(executor)
         parts = cur.fetchall()
         parts = list(map(new_complete_replace_line_bonus,parts))
         executor = f"SELECT name FROM tournaments WHERE id = {x[0]}"
         cur.execute(executor)
         name = cur.fetchone()[0]
-        bonuses.append(((x[2],name),parts[0],parts[1],parts[2]))
+        bonuses.append(((x[2],name, difficulty_dict.get(x[0])),parts[0],parts[1],parts[2]))
     color = color_dict.get(category.lower())
     misc = (num_bonuses,category.capitalize(),color)
     bonuses.append(misc)
@@ -322,6 +323,10 @@ def new_complete_replace_line_bonus(question):
     s = question[0]
     a = question[1]
     orig_a = a
+    formatters = [(';',''),('<em>','*'),(r'</em>','*'),('<strong>','**'),('</strong>','**'),('<u>','__'),('</u>','__'),('&lt','<'),('&rt','>')]
+    for char in formatters:
+        if char[0] in a:
+            orig_a = orig_a.replace(char[0],char[1])
     patterns = [r"\[\D.*\]",r"\&lt\D.*\&gt", r'\(.*?\)',r'\{.*?\}', r" For 10 points, .*?\w ", r"For 10 points each.*", r"\n\d"]#r'&.*'
     replacements = ['No. ', 'no. ', 'et. al.', 'et al.','Â', '►', '\(', '\)', 'Sgt.']
     for i in patterns:
@@ -340,8 +345,11 @@ def new_complete_replace_line_bonus(question):
             replacement = re.sub(replacements[x], '', s)
         s = replacement
     s = re.sub(r"\s\n",'',s).strip().replace('  ', '')
-    if ';' in a:
-        a = a.replace(';','')
+    for char in formatters:
+        if char[0] in a:
+            a = a.replace(char[0],'')
+        if char[0] in s:
+            s = s.replace(char[0],char[1])
     final = (s, orig_a.strip(),a.strip())
     return final
 async def get_csv(terms,category,id, difficulty,term_by_term,raw):
@@ -353,20 +361,19 @@ async def get_csv(terms,category,id, difficulty,term_by_term,raw):
         for question,answer in questions:
             if term != None and term.casefold() not in answer.casefold():
                 continue
-            sentences = sent_tokenize(question)
+            sentences = await sync_to_async(sent_tokenize)(question)
             with open(full_path, mode='a') as card_csv:
                 for sentence in sentences:
                     sentence = sentence.replace('  ', ' ')
                     if sentence == '':
                         continue
                     duplicate = False
-                    if raw == False:
+                    if raw == False:#open thebotfile
                         for clue in clues:
                             if clue[1] == answer:
-                                score = compare_sentences(clue[0],sentence)
+                                score = await sync_to_async(compare_sentences)(clue[0],sentence)
                                 if  score > 0.43:
                                     excess += 1
-                                    print(excess)
                                     duplicate = True
                                     break
                         if duplicate == True:

@@ -323,7 +323,7 @@ def new_complete_replace_line_bonus(question):
     s = question[0]
     a = question[1]
     orig_a = a
-    formatters = [(';',''),('<em>','*'),(r'</em>','*'),('<strong>','**'),('</strong>','**'),('<u>','__'),('</u>','__'),('&lt','<'),('&rt','>')]
+    formatters = [(';',''),('<em>','*'),(r'</em>','*'),('<strong>','**'),('</strong>','**'),('<u>','__'),('</u>','__'),('&lt','<'),('&gt','>')]
     for char in formatters:
         if char[0] in a:
             orig_a = orig_a.replace(char[0],char[1])

@@ -74,7 +74,7 @@ async def pk(ctx,category=None,*difficulty):
     global close_pk
     if ctx.author.id in in_pk:
         if category == 'end':
-            close_pk.append(ctx.author.id )
+            close_pk.append(ctx.author.id)
             await ctx.channel.send('Ending the pk...')
         elif category == 'end--force':
             if ctx.author.id in close_pk:
@@ -266,7 +266,7 @@ async def pk(ctx,category=None,*difficulty):
                                 await ctx.channel.send(f'**{points}**/{possible_points} :x:')
                                 correct = False
                             await ctx.channel.send(f'ANSWER: {bonuses[i][num+1][1]}')
-                            if 25 <= similarity <= 75 or (msg.content.casefold() in bonuses[i][num+1][1].casefold() and correct == False) and not correct:   #;  where should this go follow m
+                            if (25 <= similarity <= 75 or (msg.content.casefold() in bonuses[i][num+1][1].casefold())) and correct == False:   #;  where should this go follow m
                                 await ctx.channel.send('Were you correct? Respond with `y` or `n`')
                                 try:
                                     msg = await client.wait_for('message', check=pred,timeout=10)
@@ -334,7 +334,8 @@ async def practice(ctx):
     B_team = []
     A_points = 0
     B_points = 0
-    moderator=''
+    moderator = ''
+    game = True
     msg = await ctx.channel.send('React to this message to join a team!')
     await msg.add_reaction('🅰️')
     await msg.add_reaction('🇧')
@@ -369,13 +370,24 @@ async def practice(ctx):
         await channel.send('Took too long')
     else:
         moderator=msg.mentions[0]
-        await ctx.channel.send(moderator)
-
+        await ctx.channel.send(f'{moderator.name[0:-5]} is now the moderator.')
     def pred(m):
             return m.author == moderator
-#don't type for a sec
+#git pull master right git pull origin master ok how wait how do i turn wait so i do pull, open the file, and work on it and tahts it.
+#i going offline so i cant turn the bot on and off so u have to upload the files then double check to make sure that the files look like this one
+#yes tmux attach -t 0 ~~i will~~ ill save a copy of this file incase i delte everything
+#ya also if you want to get out of tmux its ctrl/cmd (i forget) b d so ctrl-b-d and if you want to scroll up in the tmux window its ctrl-b-[ then to get out of it press q
+#ok when i open the file i dont have to type anyhting into the terminal right ok
+#this will still be open ok so then you can copy the files using scp to the aws thing it's in the account info channel
+#yes and then git status and it'll tell you which files you changed, then git add file for each file. then git commit -m "some message describing changes" then git push origin master
     try:
         msg = await client.wait_for('message', check=pred, timeout=30.0)
+    except asyncio.TimeoutError:
+        await channel.send('Too too long')
+    else:
+        game=True
+        while game:
+
 
 
 @client.command (name='tournament')

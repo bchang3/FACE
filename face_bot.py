@@ -25,10 +25,37 @@ client.remove_command('help')
 
 in_pk = []
 close_pk = []
-
+carding = []
 async def is_owner(ctx):
     return ctx.author.id == 435504471343235072
-
+async def get_difficulty(difficulty,ctx,in_list):
+    new_numbers = []
+    for x in difficulty:
+        if x[0] == '[':
+            if len(new_numbers) > 0:
+                await ctx.channel.send('You specified difficulty twice!')
+                in_list.remove(ctx.author.id)
+                return
+            if x[-1] != ']':
+                await ctx.channel.send('Please do not use spaces when specifying difficulty!')
+                in_list.remove(ctx.author.id)
+                return
+            else:
+                numbers = x[1:-1]
+                if len(numbers) == 0:
+                    await ctx.channel.send('You didn\'t put anything in the brackets!')
+                    in_list.remove(ctx.author.id)
+                    return
+                numbers = numbers.split(',')
+                for entry in numbers:
+                    if '-' in entry:
+                        for num in list(range(int(entry[0]),int(entry[-1])+1)):
+                            new_numbers.append(num)
+                    else:
+                        new_numbers.append(entry)
+                new_numbers = list(map(int,new_numbers))
+                new_numbers = list(set(new_numbers))
+    return new_numbers
 @client.command (name='shutdown')
 async def kill(ctx):
     if ctx.message.author.id == 435504471343235072 or ctx.message.author.id == 483405210274889728:
@@ -46,11 +73,9 @@ async def help(ctx):
     embed.add_field(name="m instructions `name of command`", value="In depth instructions on a specific command. e.g. `m instructions card`", inline=False)
     embed.add_field(name="m cats", value="Displays the abbreviations used for categories", inline=False)
     embed.add_field(name="m card", value="m card `category` `difficulty` `term`")
-    embed.add_field(name="m pk", value = "m pk `category` `difficulty` `timed`")
+    embed.add_field(name="m pk", value = "m pk `category` `[optional] difficulty` `[optional] team` `[optional] comp` `[optional] timed`")
     embed.add_field(name="m tournament", value = "m tournament `tournament name`")
     await ctx.channel.send(embed=embed)
-
-
     #copy mafia embed
 @client.command (name='instructions')
 async def instructions(ctx,command = None):
@@ -58,8 +83,10 @@ async def instructions(ctx,command = None):
         await ctx.channel.send('Specify a command after m instructions, e.g. `m instructions card`')
     elif command == 'card':
         await ctx.channel.send('**---** Use the command `m card *category* [difficulty] *term(s)*`, e.g. `m card sci [3-5,7] proton`.\n**---** The bot will send a file that you can download and import into anki!\n**---** You can substitue `all` for either the category or for the terms if you want to card entire categories or card specific terms across categories.')
+    elif command == 'tournament':
+        await ctx.channel.send('***---*** Use `m tournament *tournament name*`\n***---*** The cards will be from the tournament with the closest name, try to be as specific as possible.')
     elif command == 'pk':
-        await ctx.channel.send('**---** m pk `category` `difficulty` `timed?`, e.g. `m pk sci [4-6] timed` or `m pk sci[4-6]`.\n***---*** Starts a pk practice session.\n**---** Use `m pk end` to end the game.\n**---** use `~` to talk during the pk.')
+        await ctx.channel.send('***---*** Starts a pk practice session.\n**---** m pk `category` `difficulty` `game_mode` `timed?`, e.g. `m pk sci [4-6] timed` or `m pk sci[4-6]`.\n***---*** Use `team` or `comp` to make a team pk or a competitive pk, e.g. `m pk all [3] team`, `m pk sci [4-6] comp`\n**---** Use `{}` for multiple categories, e.g. `m pk {sci,myth}`\n**---** Use `m pk end` to end the game.\n**---** Use `~` before your messages to talk during the pk. e.g. `~that was a bad question`')
 @client.command (name='cats')
 async def cats(ctx):
     await ctx.channel.send('`sci`, `fa`,`hist`,`geo`,`lit`,`ss`,`ce`,`myth`,`religion`,`trash`')
@@ -70,6 +97,95 @@ async def pk(ctx,category=None,*difficulty):
         if id not in close_pk:
             return False
         return True
+    def pred(m):
+        return m.author == ctx.author and m.channel == ctx.channel and not m.content.startswith('~')
+    # def team_pred(m):
+    #     return ((m.author == ctx.author or m.author in team.members) and m.channel == ctx.channel) and not m.content.startswith('~')
+    class Team():
+        def __init__(self,members):
+            self.members = members
+            self.authors = [x.author for x in members]
+            def team_pred(m):
+                return ((m.author == ctx.author or m.author in self.authors) and m.channel == ctx.channel) and not m.content.startswith('~')
+            self.pred = team_pred
+            self.total_points = 0
+            self.bonuses_heard = 0
+            self.thirties = 0
+            self.difficulties = []
+        def update(self,points,pk_difficulty):
+            self.total_points += points
+            self.difficulties.append(pk_difficulty)
+            self.bonuses_heard += 1
+            if points == 30:
+                self.thirties += 1
+        def get_winner(self):
+            self.members.sort(key=lambda x: x.points)
+            winner = self.members[1]
+            loser = self.members[0]
+            return winner,loser
+        def get_ppb(self):
+            ppb = 0 if (self.bonuses_heard == 0) else (self.total_points/self.bonuses_heard)
+            return ppb
+        def get_diff(self):
+            avg_diff = 0 if len(self.difficulties) == 0 else sum(self.difficulties)/len(self.difficulties)
+            return avg_diff
+        async def get_embed(self,category,comp_pk,is_team):
+            ppb = self.get_ppb()
+            if comp_pk:
+                winner,loser = self.get_winner()
+            embed = discord.Embed (
+            title=f'PK RESULTS:',
+            colour=	0x303845,
+            timestamp=datetime.datetime.now()
+            )
+            embed.set_thumbnail(url=ctx.author.avatar_url)
+            if comp_pk:
+                winner,loser = team.get_winner()
+                embed.add_field(name='**WINNER**',value=f'{winner.author.name}')
+                embed.add_field(name=f'{winner.author.name}\'s Points',value=f'{winner.points} points, PPB: {winner.get_ppb()}')
+                embed.add_field(name=f'{loser.author.name}\'s Points',value=f'{loser.points} points, PPB: {loser.get_ppb()}')
+            else:
+                embed.add_field(name='**PPB**:',value=f'{ppb:.3f}')
+                embed.add_field(name='30 30 30:',value=f'{self.thirties}',inline = True)
+                embed.add_field(name='Total Points:',value=f'{self.total_points}',inline = True)
+            embed.add_field(name='Avg diff.', value=f'{self.get_diff():.2f}')
+            embed.add_field(name='Category',value=f'{category}')
+            embed.add_field(name='Bonuses Seen:',value=f'{self.bonuses_heard}',inline = True)
+            for player in self.members:
+                await self.get_cards(player.answerlines_missed,player)
+            if is_team == True:
+                for player in self.members:
+                    embed.add_field(name=f'{player.author.name}:',value =f'{player.points} total points',inline=False)
+            return embed
+        async def get_cards(self,cards,player):
+            full_path = await FACE.make_bonus_cards(cards,player.author.id)
+            with open(full_path, 'rb') as fp:
+                try:
+                    await player.author.send(file=discord.File(fp, f'Your PK cards (click to download).csv'))
+                except:
+                    await ctx.channel.send('Could not send pk cards, check that server DMs are turned on.')
+            await asyncio.sleep(5)
+            os.remove(full_path)
+    class Player():
+        def __init__(self,author,pred):
+            self.author = author
+            self.pred = pred
+            self.points = 0
+            self.bonuses_heard = 0
+            self.thirties = 0
+            self.answerlines_missed = []
+            self.difficulties = []
+            self.no_responses = 0
+        def update(self,points,pk_difficulty):
+            nonlocal team
+            self.difficulties.append(pk_difficulty)
+            self.bonuses_heard += 1
+            team.bonuses_heard += 1
+            if points == 30:
+                self.thirties += 1
+        def get_ppb(self):
+            ppb = 0 if (self.bonuses_heard == 0) else (self.points/self.bonuses_heard)
+            return ppb
     global in_pk
     global close_pk
     if ctx.author.id in in_pk:
@@ -82,39 +198,46 @@ async def pk(ctx,category=None,*difficulty):
             in_pk.remove(ctx.author.id)
         else:
             await ctx.channel.send('You are already in a pk! Use `m pk end` to end a pk.')
-
         return
     elif category == 'end':
         await ctx.channel.send('You are not in a pk!')
         return
     in_pk.append(ctx.author.id)
-    def pred(m):
-        return m.author == ctx.author and m.channel == ctx.channel and not m.content.startswith('~')
-
-    if ctx.message.author.id == 435504471343235072 or ctx.message.author.id == 483405210274889728 or ctx.guild.id == 634580485951193089:
-        if category == None:
-            await ctx.channel.send('You used the wrong format! Use the command `m pk *category* *[difficulty]*`, e.g. `m pk sci [3-7]` or `m pk sci:bio [1-9]`')
-            in_pk.remove(ctx.author.id)
-            return
-
-    new_numbers = []
+    if category == None:
+        await ctx.channel.send('You used the wrong format! Use the command `m pk *category* *[difficulty]*`, e.g. `m pk sci [3-7]` or `m pk sci:bio [1-9]`')
+        in_pk.remove(ctx.author.id)
+        return
     difficulty = list(difficulty)
+    brackets = False
+    numbers = False
+    for arg in difficulty:
+        for char in arg:
+            if char == '[':
+                brackets = True
+            if char.isdigit() == True:
+                numbers = True
+    if numbers and not brackets:
+        await ctx.channel.send('Please use brackets when specifying difficulty.')
+        in_pk.remove(ctx.author.id)
+        return
     if 'timed' in difficulty:
         difficulty.remove('timed')
         timed = True
     else:
         timed = False
     is_team = False
+    comp_pk = False
+    team = [Player(ctx.author,pred)]
     if 'team' in difficulty:
         difficulty.remove('team')
         start = time.time()
-        pk_team = []
         while start - time.time() < 60:
             await ctx.channel.send('Add a member to your team by mentioning them, e,g, respond with `@my_teammate`.')
             try:
                 msg = await client.wait_for('message', check=pred,timeout=10)
             except asyncio.TimeoutError:
                 await ctx.channel.send('You did not respond in time!')
+                in_pk.remove(ctx.author.id)
                 return
             else:
                 if msg.content.startswith('m done'):
@@ -122,119 +245,107 @@ async def pk(ctx,category=None,*difficulty):
                 teammate = None
                 if len(msg.mentions)>0:
                     teammate = msg.mentions[0]
-                if teammate and teammate not in pk_team:
+                if teammate and teammate not in team:
                     is_team = True
-                    def pred(m):
-                        return (m.author == ctx.author or m.author in pk_team) and m.channel == ctx.channel and not m.content.startswith('~')
-                    pk_team.append(teammate)
+                    team.append(Player(teammate,pred))
                     await ctx.channel.send('Teammate added! :ballot_box_with_check:\nUse m done when you are done adding team members.')
                 else:
                     await ctx.channel.send('That is not a valid Discord user!')
-    for x in difficulty:
-        if x[0] == '[':
-            if len(new_numbers) > 0:
-                await ctx.channel.send('You specified difficulty twice!')
-                in_pk.remove(ctx.author.id)
-                return
-            if x[-1] != ']':
-                await ctx.channel.send('Please do not use spaces when specifying difficulty!')
-                in_pk.remove(ctx.author.id)
-                return
-            else:
-                numbers = x[1:-1]
-                if len(numbers) == 0:
-                    await ctx.channel.send('You didn\'t put anything in the brackets!')
-                    in_pk.remove(ctx.author.id)
+                    in_pk.remove(ctx.author)
                     return
-                numbers = numbers.split(',')
-                for entry in numbers:
-                    if '-' in entry:
-                        for num in list(range(int(entry[0]),int(entry[-1])+1)):
-                            new_numbers.append(num)
-                    else:
-                        new_numbers.append(entry)
-                new_numbers = list(map(int,new_numbers))
-                new_numbers = list(set(new_numbers))
+    elif 'comp' in difficulty:
+        difficulty.remove('comp')
+        await ctx.channel.send('Ping your opponent to add them, e.g.`@my_opponent`.')
+        try:
+            msg = await client.wait_for('message', check=pred,timeout=10)
+        except asyncio.TimeoutError:
+            await ctx.channel.send('You did not respond in time!')
+            in_pk.remove(ctx.author.id)
+            return
+        else:
+            if len(msg.mentions)>0:
+                opponent = msg.mentions[0]
+            if opponent:
+                comp_pk = True
+                def pred_B(m):
+                    return m.author == opponent and m.channel == ctx.channel and not m.content.startswith('~')
+                team.append(Player(opponent,pred_B))
+                await ctx.channel.send('Opponent added :ballot_box_with_check:')
+            else:
+                await ctx.channel.send('That is not a valid Discord user!')
+                in_pk.remove(ctx.author.id)
+                return
+    new_numbers = await get_difficulty(difficulty,ctx,in_pk)
     difficulty = new_numbers[:]
+
+    orig_category = category
     bonuses = await FACE.get_bonus(category,difficulty)
     if bonuses == None:
-        await ctx.channel.send('That is not a valid category!')
+        await ctx.channel.send('Please check your category spellings. Do not use spaces within the `{}` when specifying multiple categories.')
         in_pk.remove(ctx.author.id)
         return
     else:
-        await ctx.channel.send(f'{bonuses[-1][0]} bonuses found!')
+        num_bonuses = bonuses[-1][0]
+        await ctx.channel.send(f'{num_bonuses} bonuses found!')
         category = bonuses[-1][1]
-        color = bonuses[-1][2]
-        difficulties = []
         game_end = False
-        total_points = 0
-        bonuses_heard = 0
-        bonuses_30 = 0
-        no_response = 0
         id = ctx.author.id
-        if is_team == True:
-            team = [[ctx.author,0]]
-            for person in pk_team:
-                packet = [person,0]
-                team.append(packet)
+        team = Team(team)
+        first_time = True
         while True and game_end == False and close(id) == False:
-            try:
-                bonuses = await FACE.get_bonus(category,difficulty)
-            except:
-                continue
-
-            for i in range(5):
+            if not first_time:
+                bonuses = await FACE.get_bonus(orig_category,difficulty)
+            for i in range(4):
+                if comp_pk == True:
+                    if i % 2 == 0:
+                        player_up = team.members[0]
+                    else:
+                        player_up = team.members[1]
+                    avatar = player_up.author.avatar_url
+                    pred_to_use = player_up.pred
+                else:
+                    pred_to_use = team.pred
+                    player_up = team
+                    avatar = ctx.author.avatar_url
                 skip = False
                 if game_end == True or close(id) == True:
                     break
                 points = 0
                 possible_points = 0
+                tournament = bonuses[i][0][1]
+                leadin = bonuses[i][0][0]
+                color = bonuses[i][0][3]
+                pk_difficulty = bonuses[i][0][2]
                 for num in range(3):
+                    question = bonuses[i][num+1][0]
+                    formatted_answer = bonuses[i][num+1][1]
+                    raw_answer = bonuses[i][num+1][2]
                     if game_end == True or close(id) == True:
                         break
                     possible_points += 10
                     embed = discord.Embed (
-                    title=f'Question {bonuses_heard+1} ~ {bonuses[i][0][1]}',
+                    title=f'Question {team.bonuses_heard+1} ~ {tournament}',
                     colour=	0x56cef0,
                     timestamp=datetime.datetime.now()
                     )
                     if color:
                         embed.colour = color
-                    embed.set_thumbnail(url=ctx.author.avatar_url)
+                    embed.set_thumbnail(url=avatar)
                     if num == 0:
-                        embed.add_field(name='\u200b',value = f'{bonuses[i][0][0]}')
-                    embed.add_field(name='\u200b',value = f'**---**         {bonuses[i][num+1][0]}',inline=False)
+                        embed.add_field(name='\u200b',value = f'{leadin}')
+                    embed.add_field(name='\u200b',value = f'**---**         {question}',inline=False)
                     if timed == True:
                         embed.set_footer(text='You have 16 seconds...')
                     await ctx.channel.send(embed=embed)
                     try:
                         if timed == True:
-                            msg = await client.wait_for('message', check=pred,timeout=16)
+                            msg = await client.wait_for('message', check=pred_to_use,timeout=16)
                         else:
-                            msg = await client.wait_for('message', check=pred,timeout=300)
+                            msg = await client.wait_for('message', check=pred_to_use,timeout=300)
                     except asyncio.TimeoutError:
-                        await ctx.channel.send(bonuses[i][num+1][1])
+                        await ctx.channel.send(formatted_answer)
                         if no_response >= 4:
-                            embed = discord.Embed (
-                            title=f'PK RESULTS:',
-                            colour=	0x303845,
-                            timestamp=datetime.datetime.now()
-                            )
-                            if color:
-                                embed.colour = color
-                            embed.set_thumbnail(url=ctx.author.avatar_url)
-                            if bonuses_heard == 0:
-                                ppb = 0
-                            else:
-                                ppb = total_points/bonuses_heard
-                            embed.add_field(name='**PPB**:',value=f'{ppb:.3f}')
-                            embed.add_field(name='Category',value=f'{category}')
-                            embed.add_field(name='30 30 30:',value=f'{bonuses_30}',inline = True)
-                            embed.add_field(name='Bonuses Seen:',value=f'{bonuses_heard}',inline = True)
-                            embed.add_field(name='Total Points:',value=f'{total_points}',inline = True)
-                            if is_team == True:
-                                for person in team:
-                                    embed.add_field(name=f'{person[0].name}:',value =f'{person[1]} total points',inline=False)
+                            embed = await team.get_embed(category,comp_pk,is_team)
                             await ctx.channel.send(embed=embed)
                             game_end = True
                             break
@@ -245,31 +356,32 @@ async def pk(ctx,category=None,*difficulty):
                             no_response = 0
                             break
                         if msg.content != 'm pk end':
-                            underlined_portion = re.search('\*\*__(.*)__\*\*',bonuses[i][num+1][1])
+                            for player in team.members:
+                                if msg.author == player.author:
+                                    ans_player = player
+                            underlined_portion = re.search('\*\*__(.*)__\*\*',formatted_answer)
                             if underlined_portion:
                                 underlined_portion = underlined_portion.group(1).casefold()
                             else:
-                                underlined_portion = re.search('\*\*(.*)\*\*',bonuses[i][num+1][1])
+                                underlined_portion = re.search('\*\*(.*)\*\*',formatted_answer)
                                 if underlined_portion:
                                     underlined_portion = underlined_portion.group(1).casefold()
                             no_response = 0
-                            similarity = fuzz.ratio(bonuses[i][num+1][2].casefold(),msg.content.casefold())
+                            similarity = fuzz.ratio(raw_answer.casefold(),msg.content.casefold())
                             if similarity > 75 or msg.content.casefold() == underlined_portion:
-                                if is_team == True:
-                                    for person in team:
-                                        if msg.author == person[0]:
-                                            person[1] = person[1] + 10
+                                ans_player.points += 10
                                 points += 10
                                 await ctx.channel.send(f'**{points}**/{possible_points} :white_check_mark:')
                                 correct = True
                             else:
                                 await ctx.channel.send(f'**{points}**/{possible_points} :x:')
+                                ans_player.answerlines_missed.append((question,raw_answer))
                                 correct = False
-                            await ctx.channel.send(f'ANSWER: {bonuses[i][num+1][1]}')
-                            if (25 <= similarity <= 75 or (msg.content.casefold() in bonuses[i][num+1][1].casefold())) and correct == False:   #;  where should this go follow m
+                            await ctx.channel.send(f'ANSWER: {formatted_answer}')
+                            if (25 <= similarity <= 75 or (msg.content.casefold() in formatted_answer.casefold())) and correct == False:   #;  where should this go follow m
                                 await ctx.channel.send('Were you correct? Respond with `y` or `n`')
                                 try:
-                                    msg = await client.wait_for('message', check=pred,timeout=10)
+                                    msg = await client.wait_for('message', check=pred_to_use,timeout=10)
                                 except asyncio.TimeoutError:
                                     None
                                 else:
@@ -277,47 +389,20 @@ async def pk(ctx,category=None,*difficulty):
                                         if msg.content.lower().startswith('n'):
                                                 await ctx.channel.send(f'**{points}**/{possible_points} :x:')
                                         elif msg.content.lower().startswith('y'):
-                                            if is_team == True:
-                                                for person in team:
-                                                    if msg.author == person[0]:
-                                                        person[1] = person[1] + 10
+                                            ans_player.points += 10
+                                            ans_player.answerlines_missed.remove((question,raw_answer))
                                             points += 10
                                             await ctx.channel.send(f'**{points}**/{possible_points} :white_check_mark:')
                                         else:
                                             await ctx.channel.send('Not a valid response!')
                     await asyncio.sleep(1)
                 if id not in close_pk and skip == False:
-                    difficulties.append(bonuses[i][0][2])
-                    bonuses_heard += 1
-                    if points == 30:
-                        bonuses_30 += 1
-                    total_points += points
-                    await asyncio.sleep(5)
-                # embed.add_field(name = f'{num+1}.',value = f'{bonuses[i][num+1][1]}',inline=False)
+                    player_up.update(points,pk_difficulty)
+                    await asyncio.sleep(2)
+            first_time = False
         if id in close_pk:
             close_pk.remove(id)
-            embed = discord.Embed (
-            title=f'PK RESULTS:',
-            colour=	0x303845,
-            timestamp=datetime.datetime.now()
-            )
-            if color:
-                embed.colour = color
-            embed.set_thumbnail(url=ctx.author.avatar_url)
-            if bonuses_heard == 0:
-                ppb = 0
-            else:
-                ppb = total_points/bonuses_heard
-            avg_diff = sum(difficulties)/len(difficulties) if len(difficulties)>0 else 0
-            embed.add_field(name='**PPB**:',value=f'{ppb:.3f}')
-            embed.add_field(name='Category:',value=f'{category}',inline = True)
-            embed.add_field(name='30 30 30:',value=f'{bonuses_30}',inline = True)
-            embed.add_field(name='Bonuses Seen:',value=f'{bonuses_heard}',inline = True)
-            embed.add_field(name='Total Points:',value=f'{total_points}',inline = True)
-            embed.add_field(name='Avg. Difficulty:',value=f'{avg_diff:.2f}',inline = True)
-            if is_team == True:
-                for person in team:
-                    embed.add_field(name=f'{person[0].name}:',value =f'{person[1]} total points',inline=False)
+            embed = await team.get_embed(category,comp_pk,is_team)
             await ctx.channel.send(embed=embed)
         if id in in_pk:
             in_pk.remove(id)
@@ -328,10 +413,34 @@ async def practice(ctx):
     def check(reaction, user):
         nonlocal msg
         return (str(reaction.emoji) == '🇧' or str(reaction.emoji) == '🅰️') and user != client.user and reaction.message.id == msg.id
+    class Team():
+        def __init__(self, captain, players, name):
+            self.captain = captain
+            self.players = players
+            self.name = name
+            self.team_points = 0
+        class Player():
+            def __init__(self,author,pred):
+                self.author = author
+                self.total_points = 0
+                self.tossups_heard = 0
+                self.powers = 0
+                self.tens = 0
+                self.negs = 0
+            def update(self,points):
+                self.total_points += points
+                self.difficulties.append(pk_difficulty)
+                self.tossups_heard += 1
+                if points == 15:
+                    self.powers += 1
+                elif points == 10:
+                    self.tens += 1
+                elif points == -5:
+                    self.negs += 1
 
     start = time.time()
-    A_team = []
-    B_team = []
+    A_members = []
+    B_members = []
     A_points = 0
     B_points = 0
     moderator = ''
@@ -346,18 +455,18 @@ async def practice(ctx):
         except asyncio.TimeoutError:
             None
         else:
-            if user not in A_team and user not in B_team:
+            if user not in A_members and user not in B_members:
                 if str(reaction.emoji) == '🅰️':
-                    A_team.append(user)
+                    A_members.append(user)
                 else:
-                    B_team.append(user)
+                    B_members.append(user)
             else:
                 await msg.remove_reaction(str(reaction.emoji),user)
     A_string = '```A TEAM: '
     B_string = '```B TEAM: '
-    for x in A_team:
+    for x in A_members:
         A_string = A_string + f'\n{x.name} A' # append to string with new line
-    for x in B_team:
+    for x in B_members:
         B_string = B_string + f'\n{x.name} B'
     await ctx.channel.send(A_string+'```')
     await ctx.channel.send(B_string+'```')
@@ -366,30 +475,30 @@ async def practice(ctx):
         return m.author == ctx.author and m.channel == ctx.channel
     try:
         msg = await client.wait_for('message', check=pred, timeout=30.0)
+        await ctx.channel.send('Thirty seconds to ping mod.')
     except asyncio.TimeoutError:
         await channel.send('Took too long')
     else:
         moderator=msg.mentions[0]
         await ctx.channel.send(f'{moderator.name[0:-5]} is now the moderator.')
+        await ctx.channel.send('here')
     def pred(m):
-            return m.author == moderator
-#git pull master right git pull origin master ok how wait how do i turn wait so i do pull, open the file, and work on it and tahts it.
-#i going offline so i cant turn the bot on and off so u have to upload the files then double check to make sure that the files look like this one
-#yes tmux attach -t 0 ~~i will~~ ill save a copy of this file incase i delte everything
-#ya also if you want to get out of tmux its ctrl/cmd (i forget) b d so ctrl-b-d and if you want to scroll up in the tmux window its ctrl-b-[ then to get out of it press q
-#ok when i open the file i dont have to type anyhting into the terminal right ok
-#this will still be open ok so then you can copy the files using scp to the aws thing it's in the account info channel
-#yes and then git status and it'll tell you which files you changed, then git add file for each file. then git commit -m "some message describing changes" then git push origin master
-    try:
-        msg = await client.wait_for('message', check=pred, timeout=30.0)
-    except asyncio.TimeoutError:
-        await channel.send('Too too long')
-    else:
-        game=True
-        while game:
-
-
-
+            return m.author == moderator and m.channel == ctx.channel and m.content.startswith('~')
+    game=True
+    while game:
+        try:
+            msg = await client.wait_for('message', check=pred, timeout=30.0)
+        except asyncio.TimeoutError:
+            await channel.send('Too too long')
+        else:
+            if msg[0]=='~':
+                None
+            elif msg[0:1].casefold()=='tu':
+                None
+            elif msg[0:4].casefold()=='bonus':
+                None
+            elif msg[0:2].casefold()=='neg':
+                None
 @client.command (name='tournament')
 async def tournament(ctx,*tournament):
     if len(tournament) == 0:
@@ -414,6 +523,9 @@ async def card(ctx,category=None,*terms):
         if category == None or terms == []:
             await ctx.channel.send('You used the wrong format! Use the command `m card *category* *[difficulty]* *term*`, e.g. `m card sci [3-7] proton` or `m card sci biology all`')#i need access to the other part plz
             return
+        if ctx.author.id in carding:
+            await ctx.channel.send('Please wait for your previous request to finish before starting another one.')
+            return
         word = str()
         separated_terms = []
         new_numbers = []
@@ -429,28 +541,9 @@ async def card(ctx,category=None,*terms):
             terms.remove('raw')
         else:
             raw = False
+        new_numbers = await get_difficulty(terms,ctx,carding)
         for x in terms:
             if x[0] == '[':
-                if len(new_numbers) > 0:
-                    await ctx.channel.send('You specified difficulty twice!')
-                    return
-                if x[-1] != ']':
-                    await ctx.channel.send('Please do not use spaces when specifying difficulty!')
-                    return
-                else:
-                    numbers = x[1:-1]
-                    if len(numbers) == 0:
-                        await ctx.channel.send('You didn\'t put anything in the brackets!')
-                        return
-                    numbers = numbers.split(',')
-                    for entry in numbers:
-                        if '-' in entry:
-                            for num in list(range(int(entry[0]),int(entry[-1])+1)):
-                                new_numbers.append(num)
-                        else:
-                            new_numbers.append(entry)
-                    new_numbers = list(map(int,new_numbers))
-                    new_numbers = list(set(new_numbers))
                 continue
             if x[-1] == ',':
                 if len(word) == 0:
@@ -469,24 +562,29 @@ async def card(ctx,category=None,*terms):
         if len(separated_terms) == 0:
             term_by_term = False
         difficulty = new_numbers[:]
+        carding.append(ctx.author.id)
         await ctx.channel.send(f'Beginning the carding process... Estimated time: `{len(separated_terms)/8.6:.4f} seconds`')
-        # try:
-        result = await FACE.get_csv(separated_terms,category,ctx.author.id,difficulty,term_by_term,raw)
+        try:
+            result = await FACE.get_csv(separated_terms,category,ctx.author.id,difficulty,term_by_term,raw)
+        except:
+            await ctx.channel.send('There was a problem! Please try again.')
+            carding.remove(ctx.author.id)
+            return
         if result == None:
             await ctx.channel.send('That is not a valid category!')
+            carding.remove(ctx.author.id)
             return
         full_path, total_cards = result
-        # except:
-        #     await ctx.channel.send('There was a problem! Please try again.')
-        #     return
         if full_path == None:
             await ctx.channel.send('That is not a valid category!')
+            carding.remove(ctx.author.id)
             return
         with open(full_path, 'rb') as fp:
             await ctx.channel.send(file=discord.File(fp, f'{ctx.author.name}\'s {category} cards (click to download).csv'))
         await ctx.channel.send(f'Around {total_cards} cards made!')
         await asyncio.sleep(7)
         os.remove(full_path)
+        carding.remove(ctx.author.id)
     else:
         await ctx.channel.send('Sorry, this command is reserved. :peach:')
 @client.command (name='info',aliases=['details'])
@@ -502,6 +600,21 @@ async def info(ctx):
     embed.add_field(name='Programming language:', value ='Python 3.6.3', inline=True)
     embed.add_field(name='Library:', value ='Discord python rewrite branch (v1.4)', inline=True)
     await ctx.channel.send(embed=embed)
+@client.command (name='review')
+async def review(ctx):
+    embed= discord.Embed(
+    title= 'Card #1/10',
+    colour= 0x00ff00,
+    timestamp=datetime.datetime.now()
+    )
+    embed.add_field(name='This would be the front of the card.',value='\u200b')
+    await msg.add_reaction(':back:')
+    await msg.add_reaction(':forward')
+    await msg.add_reaction(':red:')
+    await msg.add_reaction(':yellow:')
+    await msg.add_reaction(':green:')
+
+    #copy mafia embed
 @client.event
 async def on_message(ctx):# we do not want the bot to reply to itself
     if ctx.author == client.user:

@@ -22,17 +22,17 @@ def postgres_connect():
     cur = conn.cursor()
     return conn, cur
 color_dict = {
-    'science':0x34cf53,
-    'literature':0xc73232,
-    'fine arts':0xbd93db,
-    'mythology':0x2e1242,
-    'history':0xfaed61,
-    'geography':0x997b53,
-    'trash':0x9da4ab,
-    'current events':0x1882ed,
-    'philosophy': 0xf0ddb9,
-    'social sciences':0xf576be,
-    'religion':0xf7f5f6
+    17:0x34cf53, #science
+    15:0xc73232, #literature
+    21:0xbd93db, # finearts
+    14:0x2e1242, #myth
+    18:0xfaed61, #history
+    20:0x997b53, #geography
+    16:0x9da4ab, #trash
+    26:0x1882ed, #current events
+    25: 0xf0ddb9, #philosophy
+    22:0xf576be, # social sciences
+    19:0xf7f5f6 #religion
 }
 first_cat_dict = {
     'sci': 'science',
@@ -231,31 +231,45 @@ async def get_tossup(query,category,difficulty):
                     results.remove(res)
     results = list(map(last_two,results))
     return results
+def get_cat_id(category_name):
+    category = category_name
+    if category_name in first_cat_dict:
+        category = first_cat_dict.get(category_name).casefold()
+    id = cat_dict.get(category)
+    if id == None:
+        if category_name in first_subcat_dict:
+            category = first_subcat_dict.get(category_name).casefold()
+        id = subcat_dict.get(category)
+        if id:
+            return f'subcategory_id = {id}'
+        else:
+            return None
+    else:
+        return f'category_id = {id}'
 async def get_bonus(category,difficulty):
     conn, cur = postgres_connect()
-    subcategory = category
-    if first_cat_dict.get(category.casefold()):
-        category = first_cat_dict.get(category.casefold())
-    elif first_subcat_dict.get(category.casefold()):
-        subcategory = first_subcat_dict.get(category.casefold())
-    orig_category = category
-    category = cat_dict.get(category.casefold())
-    orig_subcategory = subcategory
-    subcategory = subcat_dict.get(subcategory.casefold())
-    if category == None and subcategory == None:
-        return None
-    sub_num = None
-    if category == 'all':
-        executor =  f"SELECT tournament_id,id,leadin FROM bonuses TABLESAMPLE BERNOULLI(0.5) LIMIT 1000"
-        category = 'ALL'
-    elif subcategory == None:
-        executor = f"SELECT tournament_id,id,leadin FROM bonuses WHERE category_id = {category}"
-        category = orig_category
+    curly_search =  re.search(r'\{(.*?)\}',category)
+    if curly_search:
+        categories = curly_search.group(1).split(',')
+        category_ids = list(map(get_cat_id,categories))
+        if len(category_ids) == 0:
+            return
+        for x in category_ids.copy():
+            if x == None:
+                return
+        conditions = ' OR '.join(category_ids)
     else:
-        executor = f"SELECT tournament_id,id,leadin FROM bonuses WHERE subcategory_id = {subcategory}"
-        category = orig_subcategory
+        category_ids = get_cat_id(category)
+        if category_ids == None:
+            return
+        conditions = category_ids
+    if category == 'all':
+        executor =  f"SELECT tournament_id,id,leadin,category_id FROM bonuses TABLESAMPLE BERNOULLI(0.5) LIMIT 1000"
+        category = 'ALL'
+    else:
+        executor = f"SELECT tournament_id,id,leadin,category_id FROM bonuses WHERE " + conditions
     cur.execute(executor)
-    results = cur.fetchall()
+    results = cur.fetchall()#what is question a and s it's the question and the answer
     if len(difficulty) > 0:
         for i,res in enumerate(results[:]):
             if difficulty_dict.get(res[0]) not in difficulty:
@@ -265,6 +279,11 @@ async def get_bonus(category,difficulty):
     results = random.sample(results,5)
     bonuses = []
     for x in results:
+        leadin = x[2]
+        color = color_dict.get(int(x[3]))
+        formatters = [('*',''), (';',''), ('<em>','*'), (r'</em>','*'), ('<strong>','**'), ('</strong>','**'), ('<u>','__'), ('</u>','__'), ('&lt','<'), ('&gt','>')]
+        for char in formatters:
+            leadin = leadin.replace(char[0],char[1])
         executor = f"SELECT formatted_text,formatted_answer FROM bonus_parts WHERE bonus_id = {x[1]} ORDER BY number"
         cur.execute(executor)
         parts = cur.fetchall()
@@ -272,9 +291,8 @@ async def get_bonus(category,difficulty):
         executor = f"SELECT name FROM tournaments WHERE id = {x[0]}"
         cur.execute(executor)
         name = cur.fetchone()[0]
-        bonuses.append(((x[2],name, difficulty_dict.get(x[0])),parts[0],parts[1],parts[2]))
-    color = color_dict.get(category.lower())
-    misc = (num_bonuses,category.capitalize(),color)
+        bonuses.append(((leadin,name,difficulty_dict.get(x[0]),color),parts[0],parts[1],parts[2]))
+    misc = (num_bonuses,category.capitalize())
     bonuses.append(misc)
     return bonuses
 async def get_tournament(tournament):
@@ -323,10 +341,12 @@ def new_complete_replace_line_bonus(question):
     s = question[0]
     a = question[1]
     orig_a = a
-    formatters = [(';',''),('<em>','*'),(r'</em>','*'),('<strong>','**'),('</strong>','**'),('<u>','__'),('</u>','__'),('&lt','<'),('&gt','>')]
+    formatters = [('*',''), (';',''), ('<em>','*'), (r'</em>','*'), ('<strong>','**'), ('</strong>','**'), ('<u>','__'), ('</u>','__'), ('&lt','<'), ('&gt','>')]
     for char in formatters:
         if char[0] in a:
             orig_a = orig_a.replace(char[0],char[1])
+        if char[0] in s:
+            s = s.replace(char[0],char[1])
     patterns = [r"\[\D.*\]",r"\&lt\D.*\&gt", r'\(.*?\)',r'\{.*?\}', r" For 10 points, .*?\w ", r"For 10 points each.*", r"\n\d"]#r'&.*'
     replacements = ['No. ', 'no. ', 'et. al.', 'et al.','Â', '►', '\(', '\)', 'Sgt.']
     for i in patterns:
@@ -352,11 +372,24 @@ def new_complete_replace_line_bonus(question):
             s = s.replace(char[0],char[1])
     final = (s, orig_a.strip(),a.strip())
     return final
+async def make_bonus_cards(cards,id):
+    full_path = f"temp/pk_{id}_cards.csv"
+    try:
+        f = open(full_path,"x")
+    except:
+        os.remove(full_path)
+        f = open(full_path,"x")
+    f.close()
+    with open(full_path, mode='a') as card_csv:
+        for question,answer in cards:
+            card_writer = csv.writer(card_csv, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+            card_writer.writerow([question,answer])
+    return full_path
 async def get_csv(terms,category,id, difficulty,term_by_term,raw):
     async def write_csv(tossups,raw,term=None):
         clues = []
         excess = 0
-        global total_cards
+        nonlocal total_cards
         questions = list(map(new_complete_replace_line,tossups))
         for question,answer in questions:
             if term != None and term.casefold() not in answer.casefold():
@@ -382,7 +415,6 @@ async def get_csv(terms,category,id, difficulty,term_by_term,raw):
                     card_writer.writerow([sentence,answer])
                     clues.append((sentence,answer))
                     total_cards += 1
-    global total_cards
     total_cards = 0
     full_path = f"temp/{category}{id}_cards.csv"
     try:
@@ -432,6 +464,7 @@ async def get_csv_tournament(tournament):
         return None
     write_csv_tournament(tossups)
     return full_path, total_cards
+
 
 def main():
     loop = asyncio.new_event_loop()

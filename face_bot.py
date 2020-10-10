@@ -604,26 +604,34 @@ async def info(ctx):
 async def review(ctx):
     embed= discord.Embed(
     title= 'Card #1/10',
-    colour= 0x00ff00,
+    colour= 0xf0f0f0,
     timestamp=datetime.datetime.now()
     )
     embed.add_field(name='This would be the front of the card.',value='\u200b')
-    await msg.add_reaction(':back:')
-    await msg.add_reaction(':forward')
-    await msg.add_reaction(':red:')
-    await msg.add_reaction(':yellow:')
-    await msg.add_reaction(':green:')
+    embed.set_footer(text='Add reactions based on what you would like to do.')
+    msg = await ctx.channel.send(embed=embed)
+    await msg.add_reaction('\u2B05')
+    await msg.add_reaction('\u27A1')
+    await msg.add_reaction('\U0001F534')
+    await msg.add_reaction('\U0001F7E1')
+    await msg.add_reaction('\U0001F7E2')
 
     #copy mafia embed
 @client.event
-async def on_message(ctx):# we do not want the bot to reply to itself
-    if ctx.author == client.user:
+async def on_message(msg):# we do not want the bot to reply to itself
+    if msg.author == client.user:
         return
+    if msg.guild.id == 634580485951193089 or msg.channel.id == 742885307304902727:
+        test1 = client.get_channel(742885307304902727)
+        if len(msg.mentions)>0:
+            # await msg.channel.send(f'{msg.author.mention} pinged')
+            await test1.send(f'{msg.author.mention} pinged')
+
     def pred(m):
-        return m.author == ctx.author and m.channel == ctx.channel
+        return m.author == msg.author and m.channel == msg.channel
     # if ctx.author.id==248640104606859264:
     #     await ctx.channel.send(ctx.author.mention+' STOP') KEVIN STOP
-    await client.process_commands(ctx)
+    await client.process_commands(msg)
 
 #start up
 @client.event

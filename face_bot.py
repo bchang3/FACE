@@ -15,6 +15,7 @@ import nltk
 from nltk.tokenize import sent_tokenize
 import csv
 import FACE
+import random
 from fuzzywuzzy import fuzz
 from fuzzywuzzy import process
 
@@ -159,13 +160,20 @@ async def pk(ctx,category=None,*difficulty):
             return embed
         async def get_cards(self,cards,player):
             full_path = await FACE.make_bonus_cards(cards,player.author.id)
-            with open(full_path, 'rb') as fp:
-                try:
-                    await player.author.send(file=discord.File(fp, f'Your PK cards (click to download).csv'))
-                except:
-                    await ctx.channel.send('Could not send pk cards, check that server DMs are turned on.')
-            await asyncio.sleep(5)
-            os.remove(full_path)
+            await ctx.channel.send('Would you like PK review cards? Respond with `n` for no and `y` for yes.')
+            try:
+                msg = await client.wait_for('message',check=pred,timeout=60)
+            except asyncio.TimeoutError:
+                await client.wait_for('You did not respond in time. Deleting PK cards...')
+            else:
+                if msg.content != 'n':
+                    with open(full_path, 'rb') as fp:
+                        try:
+                            await player.author.send(file=discord.File(fp, f'Your PK cards (click to download).csv'))
+                        except:
+                            await ctx.channel.send('Could not send pk cards, check that server DMs are turned on.')
+                    await asyncio.sleep(5)
+                    os.remove(full_path)
     class Player():
         def __init__(self,author,pred):
             self.author = author
@@ -277,7 +285,6 @@ async def pk(ctx,category=None,*difficulty):
                 return
     new_numbers = await get_difficulty(difficulty,ctx,in_pk)
     difficulty = new_numbers[:]
-
     orig_category = category
     bonuses = await FACE.get_bonus(category,difficulty)
     if bonuses == None:

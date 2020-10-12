@@ -1,6 +1,7 @@
 import sys
 import re
 import time
+import random
 import os
 import nltk.data
 import nltk
@@ -257,26 +258,38 @@ async def get_bonus(category,difficulty):
         for x in category_ids.copy():
             if x == None:
                 return
-        conditions = ' OR '.join(category_ids)
+        conditions = category_ids
     else:
         category_ids = get_cat_id(category)
         if category_ids == None:
             return
-        conditions = category_ids
+        conditions = [category_ids]
+    results = []
+    executions = []
     if category == 'all':
         executor =  f"SELECT tournament_id,id,leadin,category_id FROM bonuses TABLESAMPLE BERNOULLI(0.5) LIMIT 1000"
+        executions.append(executor)
         category = 'ALL'
     else:
-        executor = f"SELECT tournament_id,id,leadin,category_id FROM bonuses WHERE " + conditions
-    cur.execute(executor)
-    results = cur.fetchall()#what is question a and s it's the question and the answer
+        for x in conditions:
+            executor = f"SELECT tournament_id,id,leadin,category_id FROM bonuses WHERE " + x
+            executions.append(executor)
+    for executor in executions:
+        cur.execute(executor)
+        results.append(cur.fetchall())#what is question a and s it's the question and the answer
     if len(difficulty) > 0:
-        for i,res in enumerate(results[:]):
-            if difficulty_dict.get(res[0]) not in difficulty:
-                if res in results:
-                    results.remove(res)
-    num_bonuses = len(results)
-    results = random.sample(results,5)
+        for result in results:
+            for i,res in enumerate(result.copy()):
+                if difficulty_dict.get(res[0]) not in difficulty:
+                    if res in result:
+                        result.remove(res)
+    sampled = []
+    num_bonuses = 0
+    for result in results:
+        num_bonuses += len(result)
+        sampled = sampled + random.sample(result,4)
+    results = sampled
+    random.shuffle(results)
     bonuses = []
     for x in results:
         leadin = x[2]
@@ -464,7 +477,6 @@ async def get_csv_tournament(tournament):
         return None
     write_csv_tournament(tossups)
     return full_path, total_cards
-
 
 def main():
     loop = asyncio.new_event_loop()

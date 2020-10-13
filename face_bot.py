@@ -628,11 +628,15 @@ async def review(ctx):
 async def on_message(msg):# we do not want the bot to reply to itself
     if msg.author == client.user:
         return
-    if msg.guild.id == 634580485951193089 or msg.channel.id == 742885307304902727:
-        test1 = client.get_channel(742885307304902727)
-        if len(msg.mentions)>0:
-            # await msg.channel.send(f'{msg.author.mention} pinged')
-            await test1.send(f'{msg.author.mention} pinged')
+    # if msg.guild.id == 634580485951193089 or msg.channel.id == 742885307304902727:
+    #     test1 = client.get_channel(742885307304902727)
+    #     if len(msg.mentions)>0:
+    #         # await msg.channel.send(f'{msg.author.mention} pinged')
+    #         await test1.send(f'{msg.author.mention} pinged')
+    if msg.content == 'm':
+        stockm = ['\U0001F1F8','\U0001F1F9','\U0001F1F4','\U0001F1E8','\U0001F1F0','\u24c2']
+        for reaction in stockm:
+            await msg.add_reaction(reaction)
 
     def pred(m):
         return m.author == msg.author and m.channel == msg.channel

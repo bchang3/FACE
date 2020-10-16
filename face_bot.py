@@ -162,9 +162,9 @@ async def pk(ctx,category=None,*difficulty):
             full_path = await FACE.make_bonus_cards(cards,player.author.id)
             await ctx.channel.send('Would you like PK review cards? Respond with `n` for no and `y` for yes.')
             try:
-                msg = await client.wait_for('message',check=pred,timeout=60)
+                msg = await client.wait_for('message',check=pred,timeout=20)
             except asyncio.TimeoutError:
-                await client.wait_for('You did not respond in time. Deleting PK cards...')
+                await ctx.channel.send('You did not respond in time. Deleting PK cards...')
             else:
                 if msg.content != 'n':
                     with open(full_path, 'rb') as fp:
@@ -284,6 +284,9 @@ async def pk(ctx,category=None,*difficulty):
                 in_pk.remove(ctx.author.id)
                 return
     new_numbers = await get_difficulty(difficulty,ctx,in_pk)
+    if new_numbers == None:
+        in_pk.remove(ctx.author.id)
+        return
     difficulty = new_numbers[:]
     orig_category = category
     bonuses = await FACE.get_bonus(category,difficulty)
@@ -570,7 +573,7 @@ async def card(ctx,category=None,*terms):
             term_by_term = False
         difficulty = new_numbers[:]
         carding.append(ctx.author.id)
-        await ctx.channel.send(f'Beginning the carding process... Estimated time: `{len(separated_terms)/8.6:.4f} seconds`')
+        await ctx.channel.send(f'Beginning the carding process... Estimated time: `Up to five minutes...`')
         try:
             result = await FACE.get_csv(separated_terms,category,ctx.author.id,difficulty,term_by_term,raw)
         except:
@@ -587,7 +590,10 @@ async def card(ctx,category=None,*terms):
             carding.remove(ctx.author.id)
             return
         with open(full_path, 'rb') as fp:
-            await ctx.channel.send(file=discord.File(fp, f'{ctx.author.name}\'s {category} cards (click to download).csv'))
+            try:
+                await ctx.channel.send(file=discord.File(fp, f'{ctx.author.name}\'s {category} cards (click to download).csv'))
+            except discord.errors.HTTPException:
+                await ctx.channel.send('File size too large! Please try restricting your request (e.g. add difficulty parameters or use subcategories).')
         await ctx.channel.send(f'Around {total_cards} cards made!')
         await asyncio.sleep(7)
         os.remove(full_path)

@@ -27,8 +27,55 @@ client.remove_command('help')
 in_pk = []
 close_pk = []
 carding = []
-async def is_owner(ctx):
-    return ctx.author.id == 435504471343235072
+cat_embed = discord.Embed(
+    title=f'CATEGORIES:',
+    colour=	0xf7f7f7,
+)
+for abbrev,cat in FACE.first_cat_dict.items():
+    cat_embed.add_field(name=cat.capitalize(),value=abbrev)
+
+subcat_lookup = dict()
+for cat in FACE.first_cat_dict.values():
+    results = []
+    set_subcats = []
+    for abbreviation,sub_cat in FACE.first_subcat_dict.items():
+        original = sub_cat
+        sub_cat = sub_cat.casefold()
+        if cat in sub_cat and sub_cat.find(cat) == 0:
+            results.append((abbreviation,original))
+            set_subcats.append(original)
+    set_subcats = list(set(set_subcats))
+    embed = discord.Embed(
+        title=f'SUBCATEGORIES',
+        colour=	0xf7f7f7,
+    )
+    for subcat in set_subcats:
+        all_abbrev = []
+        for abbrev,subcat2 in results:
+            if subcat == subcat2:
+                all_abbrev.append(abbrev)
+        embed.add_field(name=subcat,value=', '.join(all_abbrev))
+    subcat_lookup[cat] = embed
+
+def mysql_connect():
+    mydb = mysql.connect(
+      host="127.0.0.1",
+      user="root",
+      password="TheCataclysm91$(*",
+      database="face_log"
+    )
+    mycursor = mydb.cursor(buffered=True)
+    return mydb, mycursor
+def is_owner(ctx):
+    return ctx.author.id == 435504471343235072 or ctx.author.id == 483405210274889728
+def premium(id):
+    mydb,mycursor = mysql_connect()
+    mycursor.execute(f'SELECT premium FROM premium_servers WHERE server_id = {id}')
+    premium = mycursor.fetchone()
+    if premium:
+        return True
+    else:
+        return False
 async def get_difficulty(difficulty,ctx,in_list):
     new_numbers = []
     for x in difficulty:
@@ -59,7 +106,7 @@ async def get_difficulty(difficulty,ctx,in_list):
     return new_numbers
 @client.command (name='shutdown')
 async def kill(ctx):
-    if ctx.message.author.id == 435504471343235072 or ctx.message.author.id == 483405210274889728:
+    if is_owner(ctx):
         await ctx.message.delete()
         await ctx.channel.send('shutting down...')
         sys.exit()
@@ -83,16 +130,37 @@ async def instructions(ctx,command = None):
     if command == None:
         await ctx.channel.send('Specify a command after m instructions, e.g. `m instructions card`')
     elif command == 'card':
-        await ctx.channel.send('**---** Use the command `m card *category* [difficulty] *term(s)*`, e.g. `m card sci [3-5,7] proton`.\n**---** The bot will send a file that you can download and import into anki!\n**---** You can substitue `all` for either the category or for the terms if you want to card entire categories or card specific terms across categories.')
+        await ctx.channel.send('**---** Use the command `m card *category* [difficulty] *term(s)*`, e.g. `m card sci [3-5,7] proton`.\n**---** The bot will send a file that you can download and import into anki!\n**---** You can substitue `all` for either the category or for the terms if you want to card entire categories or card specific terms across categories.\n**---** Use the keyword `filtered` at the end of your command to remove similar cards and make your review more efficient. (e.g. `m card sci proton filtered`)')
     elif command == 'tournament':
         await ctx.channel.send('***---*** Use `m tournament *tournament name*`\n***---*** The cards will be from the tournament with the closest name, try to be as specific as possible.')
     elif command == 'pk':
         await ctx.channel.send('***---*** Starts a pk practice session.\n**---** m pk `category` `difficulty` `game_mode` `timed?`, e.g. `m pk sci [4-6] timed` or `m pk sci[4-6]`.\n***---*** Use `team` or `comp` to make a team pk or a competitive pk, e.g. `m pk all [3] team`, `m pk sci [4-6] comp`\n**---** Use `{}` for multiple categories, e.g. `m pk {sci,myth}`\n**---** Use `m pk end` to end the game.\n**---** Use `~` before your messages to talk during the pk. e.g. `~that was a bad question`')
 @client.command (name='cats')
 async def cats(ctx):
-    await ctx.channel.send('`sci`, `fa`,`hist`,`geo`,`lit`,`ss`,`ce`,`myth`,`religion`,`trash`')
+    embed = cat_embed
+    embed.timestamp = datetime.datetime.now()
+    await ctx.channel.send(embed=embed)
+@client.command(name='subcats')
+async def subcats(ctx,cat=None):
+    if cat == None:
+        await ctx.channel.send('Use m subcats `category` to browse subcategories. e.g. `m subcats sci`')
+        return
+    if cat.casefold() in FACE.first_cat_dict.values():
+        cat = cat.casefold()
+    elif FACE.first_cat_dict.get(cat.casefold()):
+        cat = FACE.first_cat_dict.get(cat).casefold()
+    else:
+        await ctx.channel.send('That is not a valid category!')
+        return
+    embed = subcat_lookup.get(cat)
+    embed.timestamp = datetime.datetime.now()
+    await ctx.channel.send(embed=embed)
 @client.command (name='pk')
 async def pk(ctx,category=None,*difficulty):
+    try:
+        guild_id = ctx.guild.id
+    except:
+        guild_id = 0
     def close(id):
         global close_pk
         if id not in close_pk:
@@ -130,7 +198,7 @@ async def pk(ctx,category=None,*difficulty):
         def get_diff(self):
             avg_diff = 0 if len(self.difficulties) == 0 else sum(self.difficulties)/len(self.difficulties)
             return avg_diff
-        async def get_embed(self,category,comp_pk,is_team):
+        async def get_embed(self,category,comp_pk,is_team,guild_id):
             ppb = self.get_ppb()
             if comp_pk:
                 winner,loser = self.get_winner()
@@ -152,15 +220,16 @@ async def pk(ctx,category=None,*difficulty):
             embed.add_field(name='Avg diff.', value=f'{self.get_diff():.2f}')
             embed.add_field(name='Category',value=f'{category}')
             embed.add_field(name='Bonuses Seen:',value=f'{self.bonuses_heard}',inline = True)
-            for player in self.members:
-                await self.get_cards(player.answerlines_missed,player)
+            if premium(guild_id):
+                for player in self.members:
+                    await self.get_cards(player.answerlines_missed,player)
             if is_team == True:
                 for player in self.members:
                     embed.add_field(name=f'{player.author.name}:',value =f'{player.points} total points',inline=False)
             return embed
         async def get_cards(self,cards,player):
             full_path = await FACE.make_bonus_cards(cards,player.author.id)
-            await ctx.channel.send('Would you like PK review cards? Respond with `n` for no and `y` for yes.')
+            await ctx.channel.send(f'{player.author.mention},Would you like PK review cards? Respond with `n` for no and `y` for yes.')
             try:
                 msg = await client.wait_for('message',check=pred,timeout=20)
             except asyncio.TimeoutError:
@@ -237,7 +306,16 @@ async def pk(ctx,category=None,*difficulty):
     comp_pk = False
     team = [Player(ctx.author,pred)]
     if 'team' in difficulty:
-        difficulty.remove('team')
+        if not premium(guild_id):
+            embed = discord.Embed (
+            title='FACE Bot',
+            colour=	0x7dffba,
+            )
+            embed.add_field(name='Team PKs are reserved for premium servers!',value='Access exclusive perks [here](https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLj65iUKyj0nV8hP7hjZ9-XDJ3dpL4LRmm&ab_channel=RickAstleyVEVO)!')
+            await ctx.channel.send(embed=embed)
+            in_pk.remove(ctx.author)
+            return
+        # difficulty.remove('team')
         start = time.time()
         while start - time.time() < 60:
             await ctx.channel.send('Add a member to your team by mentioning them, e,g, respond with `@my_teammate`.')
@@ -262,7 +340,7 @@ async def pk(ctx,category=None,*difficulty):
                     in_pk.remove(ctx.author)
                     return
     elif 'comp' in difficulty:
-        difficulty.remove('comp')
+        # difficulty.remove('comp')
         await ctx.channel.send('Ping your opponent to add them, e.g.`@my_opponent`.')
         try:
             msg = await client.wait_for('message', check=pred,timeout=10)
@@ -305,6 +383,10 @@ async def pk(ctx,category=None,*difficulty):
         while True and game_end == False and close(id) == False:
             if not first_time:
                 bonuses = await FACE.get_bonus(orig_category,difficulty)
+            if bonuses == None:
+                await ctx.channel.send('There was an error :slight_frown:. Ending the pk.')
+                close_pk.append(id)
+                break
             for i in range(4):
                 if comp_pk == True:
                     if i % 2 == 0:
@@ -355,7 +437,7 @@ async def pk(ctx,category=None,*difficulty):
                     except asyncio.TimeoutError:
                         await ctx.channel.send(formatted_answer)
                         if no_response >= 4:
-                            embed = await team.get_embed(category,comp_pk,is_team)
+                            embed = await team.get_embed(category,comp_pk,is_team,guild_id)
                             await ctx.channel.send(embed=embed)
                             game_end = True
                             break
@@ -412,7 +494,7 @@ async def pk(ctx,category=None,*difficulty):
             first_time = False
         if id in close_pk:
             close_pk.remove(id)
-            embed = await team.get_embed(category,comp_pk,is_team)
+            embed = await team.get_embed(category,comp_pk,is_team,guild_id)
             await ctx.channel.send(embed=embed)
         if id in in_pk:
             in_pk.remove(id)
@@ -511,6 +593,18 @@ async def practice(ctx):
                 None
 @client.command (name='tournament')
 async def tournament(ctx,*tournament):
+    try:
+        guild_id = ctx.guild.id
+    except:
+        guild_id = 0
+    if not premium(guild_id):
+        embed = discord.Embed (
+        title='FACE Bot',
+        colour=	0x7dffba,
+        )
+        embed.add_field(name='This command is reserved for premium servers!',value='Access exclusive perks [here](https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLj65iUKyj0nV8hP7hjZ9-XDJ3dpL4LRmm&ab_channel=RickAstleyVEVO)!')
+        await ctx.channel.send(embed=embed)
+        return
     if len(tournament) == 0:
         await ctx.channel.send('You used the wrong format! Use the command `m card *tournament*`, e.g. `m card PACE 2016`.')
         return
@@ -529,6 +623,10 @@ async def tournament(ctx,*tournament):
 
 @client.command (name='card')
 async def card(ctx,category=None,*terms):
+    try:
+        guild_id = ctx.guild.id
+    except:
+        guild_id = 0
     if ctx.message.author.id == 435504471343235072 or ctx.message.author.id == 483405210274889728 or ctx.guild.id == 634580485951193089:
         if category == None or terms == []:
             await ctx.channel.send('You used the wrong format! Use the command `m card *category* *[difficulty]* *term*`, e.g. `m card sci [3-7] proton` or `m card sci biology all`')#i need access to the other part plz
@@ -540,17 +638,19 @@ async def card(ctx,category=None,*terms):
         separated_terms = []
         new_numbers = []
         terms = list(terms)
-        if 'all' in terms:
-            await ctx.channel.send('This could take up to five minutes. Please wait 5 minutes before trying again.')
-            term_by_term = False
-            terms.remove('all')
-        else:
-            term_by_term = True
-        if 'raw' in terms:
-            raw = True
-            terms.remove('raw')
-        else:
+        if 'filtered' in terms:
+            if not premium(guild_id):
+                embed = discord.Embed (
+                title='FACE Bot',
+                colour=	0x7dffba,
+                )
+                embed.add_field(name='Filtering your cards is reserved for premium servers!',value='Access exclusive perks [here](https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLj65iUKyj0nV8hP7hjZ9-XDJ3dpL4LRmm&ab_channel=RickAstleyVEVO)!')
+                await ctx.channel.send(embed=embed)
+                return
             raw = False
+            terms.remove('filtered')
+        else:
+            raw = True
         new_numbers = await get_difficulty(terms,ctx,carding)
         for x in terms:
             if x[0] == '[':
@@ -570,6 +670,14 @@ async def card(ctx,category=None,*terms):
         if word != '':
             separated_terms.append(word)
         if len(separated_terms) == 0:
+            if not premium(guild_id):
+                embed = discord.Embed (
+                title='FACE Bot',
+                colour=	0x7dffba,
+                )
+                embed.add_field(name='Carding entire categories/subcategories is reserved for premium servers!',value='Access exclusive perks [here](https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLj65iUKyj0nV8hP7hjZ9-XDJ3dpL4LRmm&ab_channel=RickAstleyVEVO)!')
+                await ctx.channel.send(embed=embed)
+                return
             term_by_term = False
         difficulty = new_numbers[:]
         carding.append(ctx.author.id)

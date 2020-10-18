@@ -304,7 +304,10 @@ async def get_bonus(category,difficulty):
         executor = f"SELECT name FROM tournaments WHERE id = {x[0]}"
         cur.execute(executor)
         name = cur.fetchone()[0]
-        bonuses.append(((leadin,name,difficulty_dict.get(x[0]),color),parts[0],parts[1],parts[2]))
+        try:
+            bonuses.append(((leadin,name,difficulty_dict.get(x[0]),color),parts[0],parts[1],parts[2]))
+        except:
+            return
     misc = (num_bonuses,category.capitalize())
     bonuses.append(misc)
     return bonuses

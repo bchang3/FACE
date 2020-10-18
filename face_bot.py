@@ -460,6 +460,7 @@ async def pk(ctx,category=None,*difficulty):
                                     underlined_portion = underlined_portion.group(1).casefold()
                             no_response = 0
                             similarity = fuzz.ratio(raw_answer.casefold(),msg.content.casefold())
+                            await ctx.channel.send(underlined_portion)
                             if similarity > 75 or msg.content.casefold() == underlined_portion:
                                 ans_player.points += 10
                                 points += 10
@@ -679,6 +680,8 @@ async def card(ctx,category=None,*terms):
                 await ctx.channel.send(embed=embed)
                 return
             term_by_term = False
+        else:
+            term_by_term = True
         difficulty = new_numbers[:]
         carding.append(ctx.author.id)
         await ctx.channel.send(f'Beginning the carding process... Estimated time: `Up to five minutes...`')

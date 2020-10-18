@@ -453,14 +453,13 @@ async def pk(ctx,category=None,*difficulty):
                                     ans_player = player
                             underlined_portion = re.search('\*\*__(.*)__\*\*',formatted_answer)
                             if underlined_portion:
-                                underlined_portion = underlined_portion.group(1).casefold()
+                                underlined_portion = underlined_portion.group().casefold()
                             else:
                                 underlined_portion = re.search('\*\*(.*)\*\*',formatted_answer)
                                 if underlined_portion:
-                                    underlined_portion = underlined_portion.group(1).casefold()
+                                    underlined_portion = underlined_portion.group().casefold()
                             no_response = 0
                             similarity = fuzz.ratio(raw_answer.casefold(),msg.content.casefold())
-                            await ctx.channel.send(underlined_portion)
                             if similarity > 75 or msg.content.casefold() == underlined_portion:
                                 ans_player.points += 10
                                 points += 10

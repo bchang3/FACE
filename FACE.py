@@ -301,6 +301,8 @@ async def get_bonus(category,difficulty):
         cur.execute(executor)
         parts = cur.fetchall()
         parts = list(map(new_complete_replace_line_bonus,parts))
+        if x[0] == None:
+            return
         executor = f"SELECT name FROM tournaments WHERE id = {x[0]}"
         cur.execute(executor)
         name = cur.fetchone()[0]

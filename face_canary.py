@@ -19,6 +19,7 @@ import random
 from fuzzywuzzy import fuzz
 from fuzzywuzzy import process
 from discord.ext import commands, tasks
+import matplotlib.pyplot as plt
 
 PREFIX = ['c ','C ']
 token='NzcwNzY5NDk5MzA1NjcyNzU0.X5iZCA.rrqAHZ_GzKtidTYf7S5Gj9NAn6U'
@@ -75,6 +76,13 @@ async def update_premium():
         if id not in in_table_ids:
             for i in range(3):
                 mycursor.execute(f'INSERT INTO premium_servers (user_id) VALUES ({id})')
+            member = bot_guild.get_member(id)
+            await member.send(
+'''Hi! Thank you for deciding to support us! Below is some important information:
+**---**  To activate your premium membership, use the command **m activate** in your chosen server.
+**---**  It could take up to 10 minutes for your benefits to become available.
+**---**  You can use `m activate` up to three times in three different servers.
+**---** Keep in mind that server members will not be able to use the bot in their DMs if the server has more than 50 people. ''')
     mydb.commit()
 
 @tasks.loop(minutes=30)
@@ -957,12 +965,12 @@ async def card(ctx,category=None,*terms):
     if word != '':
         separated_terms.append(word)
     if len(separated_terms) == 0:
-        if not await premium(guild_id,ctx):
+        if not (await premium(guild_id,ctx) == True):
             embed = discord.Embed (
             title='FACE Bot',
             colour=	0x7dffba,
             )
-            embed.add_field(name='Carding entire categories/subcategories is reserved for premium servers!',value='Access exclusive perks [here](https://www.patreon.com/facebot)!')
+            embed.add_field(name='Carding entire categories/subcategories is reserved for premium servers! This feature is also restrictred from trials.',value='Access exclusive perks [here](https://www.patreon.com/facebot)!')
             await ctx.channel.send(embed=embed)
             return
         term_by_term = False
@@ -1009,6 +1017,30 @@ async def info(ctx):
     embed.add_field(name='Programming language:', value ='Python 3.6.3', inline=True)
     embed.add_field(name='Library:', value ='Discord python rewrite branch (v1.4)', inline=True)
     await ctx.channel.send(embed=embed)
+
+@client.command (name='lookup')
+async def lookup(ctx,category,*terms):
+    if category == None or terms == []:
+        await ctx.channel.send('You used the wrong format! Use the command `m lookup *category* *[difficulty]* *term*`, e.g. `m lookup sci proton`')
+        return
+    term = ' '.join(terms)
+    result = await FACE.lookup(term,category)
+    if result == None:
+        await ctx.channel.send('No results found!')
+        return
+    x,y = result
+    plt.plot(x,y,markerfacecolor='red')
+    plt.xlabel('Difficulty')
+    plt.ylabel('Avg. appearence every 200 tossups)')
+    plt.title(f'Frequency of {term.title()}')
+    path = f'temp/{ctx.author.name}.png'
+    plt.savefig(path,dpi=200)
+    plt.clf()
+    with open(path, 'rb') as fp:
+        await ctx.channel.send(file=discord.File(fp))
+    await asyncio.sleep(2)
+    os.remove(path)
+
 @client.command (name='review')
 async def review(ctx):
     embed= discord.Embed(
@@ -1047,8 +1079,6 @@ async def on_message(msg):# we do not want the bot to reply to itself
 
     def pred(m):
         return m.author == msg.author and m.channel == msg.channel
-    # if ctx.author.id==248640104606859264:
-    #     await ctx.channel.send(ctx.author.mention+' STOP') KEVIN STOP
     await client.process_commands(msg)
 
 #start up

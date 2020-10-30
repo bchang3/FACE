@@ -12,6 +12,7 @@ import psycopg2
 from sentence_similarity import compare_sentences
 import random
 from asgiref.sync import sync_to_async
+import matplotlib.pyplot as plt #why are you always on the file i dont need open
 
 def postgres_connect():
     conn = psycopg2.connect(
@@ -190,8 +191,12 @@ for row in subcat_rows:
 cur.execute('SELECT * FROM tournaments')
 tournament_rows = cur.fetchall()
 difficulty_dict = dict()
+total_difficulties = [0,0,0,0,0,0,0,0,0]
 for row in tournament_rows:
     difficulty_dict[int(row[0])] = int(row[3])
+    cur.execute(f'SELECT id FROM tossups WHERE tournament_id = {row[0]}')
+    count = len(cur.fetchall())
+    total_difficulties[int(row[3])-1] += count
 
 def last_two(arr):
     new = (arr[1],arr[2])
@@ -212,18 +217,23 @@ async def get_tossup(query,category,difficulty):
         return None
     if category == 'all' and query != None:
         query = query.replace(' ',' & ')
-        executor = f"SELECT tournament_id,text,answer FROM tossups WHERE to_tsvector('english',answer) @@ to_tsquery('english','{query}')"
+        executor = f"SELECT tournament_id,text,answer FROM tossups WHERE to_tsvector('english',answer) @@ to_tsquery('english',%s)"
+        values = (query,)
     elif query == None and subcategory == None:
-        executor = f"SELECT tournament_id,text,answer FROM tossups WHERE category_id = '{category}'"
+        executor = f"SELECT tournament_id,text,answer FROM tossups WHERE category_id = %s"
+        values = (category,)
     elif query == None and subcategory != None:
-        executor = f"SELECT tournament_id,text,answer FROM tossups WHERE subcategory_id = '{subcategory}'"
+        executor = f"SELECT tournament_id,text,answer FROM tossups WHERE subcategory_id = %s"
+        values = (subcategory,)
     else:
         query = query.replace(' ',' & ')
         if subcategory:
-            executor = f"SELECT tournament_id,text,answer FROM tossups WHERE to_tsvector('english',answer) @@ to_tsquery('english','{query}') AND subcategory_id = '{subcategory}'"
+            executor = f"SELECT tournament_id,text,answer FROM tossups WHERE to_tsvector('english',answer) @@ to_tsquery('english',%s) AND subcategory_id = %s"
+            values = (query,subcategory)
         else:
-            executor = f"SELECT tournament_id,text,answer FROM tossups WHERE to_tsvector('english',answer) @@ to_tsquery('english','{query}') AND category_id = '{category}'"
-    cur.execute(executor)
+            executor = f"SELECT tournament_id,text,answer FROM tossups WHERE to_tsvector('english',answer) @@ to_tsquery('english',%s) AND category_id = %s"
+            values = (query,category)
+    cur.execute(executor,values)
     results = cur.fetchall()
     if len(difficulty) > 0:
         for i,res in enumerate(results[:]):
@@ -232,6 +242,57 @@ async def get_tossup(query,category,difficulty):
                     results.remove(res)
     results = list(map(last_two,results))
     return results
+async def lookup(query,category):
+    orig_query = query
+    conn, cur = postgres_connect()
+    subcategory = category
+    if first_cat_dict.get(category.casefold()):
+        category = first_cat_dict.get(category.casefold())
+    elif first_subcat_dict.get(category.casefold()):
+        subcategory = first_subcat_dict.get(category.casefold())
+    orig_category = category
+    category = cat_dict.get(category.casefold())
+    orig_subcategory = subcategory
+    subcategory = subcat_dict.get(subcategory.casefold())
+    if category == None and subcategory == None:
+        return None
+    if category == 'all' and query != None:
+        query = query.replace(' ',' & ')
+        executor = f"SELECT tournament_id,answer FROM tossups WHERE to_tsvector('english',answer) @@ to_tsquery('english',%s)"
+        values = (query,)
+    elif query == None and subcategory == None:
+        executor = f"SELECT tournament_id,answer FROM tossups WHERE category_id = %s"
+        values = (category,)
+    elif query == None and subcategory != None:
+        executor = f"SELECT tournament_id,answer FROM tossups WHERE subcategory_id = %s"
+        values = (subcategory)
+    else:
+        query = query.replace(' ',' & ')
+        if subcategory:
+            executor = f"SELECT tournament_id,answer FROM tossups WHERE to_tsvector('english',answer) @@ to_tsquery('english',%s) AND subcategory_id = %s"
+            values = (query,subcategory)
+        else:
+            executor = f"SELECT tournament_id,answer FROM tossups WHERE to_tsvector('english',answer) @@ to_tsquery('english',%s) AND category_id = %s"
+            values = (query,category)
+    cur.execute(executor,values)
+    results = cur.fetchall()
+    new_results = []
+    for i,row in enumerate(results.copy()):
+        answer = new_complete_replace_line(('',row[1]))[1]
+        if orig_query.casefold() == answer.casefold() or orig_query.casefold() in answer.casefold():
+            new_results.append((row[0],answer))
+    results = new_results
+    y = []
+    x = list(range(1,10))
+    for difficulty in range(1,10):
+        count = 0
+        for i,res in enumerate(results):
+            if int(difficulty_dict.get(res[0])) == difficulty:
+                if res in results:
+                    count += 1
+        y.append(count)
+    y = [count/total_difficulties[i-1]*200 for i,count in enumerate(y)]
+    return x,y
 def get_cat_id(category_name):
     category = category_name
     if category_name in first_cat_dict:
@@ -316,8 +377,9 @@ async def get_bonus(category,difficulty):
 async def get_tournament(tournament):
     conn, cur = postgres_connect()
     tournament = tournament.replace(' ',' & ')
-    executor = f"SELECT id FROM tournaments WHERE to_tsvector('english',name) @@ to_tsquery('english','{tournament}')"
-    cur.execute(executor)
+    executor = f"SELECT id FROM tournaments WHERE to_tsvector('english',name) @@ to_tsquery('english',%s)"
+    values = (tournament)
+    cur.execute(executor,values)
     results = cur.fetchall()
     try:
         id = results[0][0]
@@ -331,8 +393,8 @@ def new_complete_replace_line(question):
     s = question[0]
     a = question[1]
     #divide between {} and ## in arr
-    patterns = [r"\[\D.*\]",r"\&lt\D.*\&gt;", r'\(.*?\)',r'\{.*?\}', r" For 10 points, .*?\w ", r"For 10 points each.*", r"\n\d"]#r'&.*'
-    replacements = ['No. ', 'no. ', 'et. al.', 'et al.','Â', '►', '\(', '\)', 'Sgt.']
+    patterns = [r"Question:.*?\d\.", r"\[\D.*\]",r"\&lt\D.*\&gt;", r'\(.*?\)',r'\{.*?\}', r" For 10 points, .*?\w ", r"For 10 points each.*", r"\n\d"]#r'&.*',
+    replacements = [' No. ', ' no. ', 'et. al.', 'et al.','Â', '►', '\(', '\)', 'Sgt.', 'For 10 points.']
     for i in patterns:
         replacement = re.sub(i, ' ', s)
         if i == " For 10 points, .*?\w ":
@@ -343,8 +405,9 @@ def new_complete_replace_line(question):
         a = replacement
     for x in range(len(replacements)):
         replacement = re.sub(replacements[x], ' ', s)
-        if replacements[x]=='No.' or replacements[x]=='no.':
-            replacement = re.sub(replacements[x], '#', s)
+        if replacements[x]==' No. ' or replacements[x]==' no. ':
+            replacement = s.replace(replacements[x],'#')
+            #re.sub(replacements[x], '#', s)
         elif replacements[x]=='et. al.' or replacements[x]=='et al.':
             replacement = re.sub(replacements[x], 'and others', s)
         elif replacements[x]=='Sgt.':
@@ -486,7 +549,8 @@ async def get_csv_tournament(tournament):
 def main():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    result = loop.run_until_complete(get_bonus(17,None,[4,5,6]))
+    # result = loop.run_until_complete(lookup('Rautavaara','fa'))
     # result = loop.run_until_complete(get_csv(['Albert Einstein'],'Science',5,[],True))
+    print(total_difficulties)
 if __name__ == '__main__':
     main()

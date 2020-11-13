@@ -13,7 +13,6 @@ from sentence_similarity import compare_sentences
 import random
 from asgiref.sync import sync_to_async
 import matplotlib.pyplot as plt #why are you always on the file i dont need open
-
 def postgres_connect():
     conn = psycopg2.connect(
     host = 'localhost',
@@ -154,8 +153,6 @@ first_subcat_dict = {
     'sci:o': 'Science Other',
     'science:physics': 'Science Physics',
     'sci:physics': 'Science Physics',
-    'science:world': 'Science World',
-    'sci:world': 'Science World',
     'ss:usa': 'Social Science American',
     'ss:econ': 'Social Science Economics',
     'ss:economics': 'Social Science Economics',
@@ -242,6 +239,49 @@ async def get_tossup(query,category,difficulty):
                     results.remove(res)
     results = list(map(last_two,results))
     return results
+async def get_frequency(category,difficulty):
+    conn, cur = postgres_connect()
+    subcategory = category
+    if first_cat_dict.get(category.casefold()):
+        category = first_cat_dict.get(category.casefold())
+    elif first_subcat_dict.get(category.casefold()):
+        subcategory = first_subcat_dict.get(category.casefold())
+    orig_category = category
+    category = cat_dict.get(category.casefold())
+    orig_subcategory = subcategory
+    subcategory = subcat_dict.get(subcategory.casefold())
+    if category == None and subcategory == None:
+        return None
+    # if category == 'all':
+    #     executor = f"SELECT tournament_id,answer FROM tossups"
+    #     cur.execute(executor)
+    #     color = None
+    if subcategory == None:
+        executor = f"SELECT tournament_id,answer FROM tossups WHERE category_id = %s"
+        values = (category,)
+        color = color_dict.get(int(category))
+        cur.execute(executor,values)
+    elif subcategory != None:
+        executor = f"SELECT tournament_id,answer FROM tossups WHERE subcategory_id = %s"
+        values = (subcategory,)
+        color = color_dict.get(int(subcategory))
+        cur.execute(executor,values)
+    results = cur.fetchall()
+    if len(difficulty) > 0:
+        for i,res in enumerate(results[:]):
+            if difficulty_dict.get(res[0]) not in difficulty:
+                if res in results:
+                    results.remove(res)
+    total = len(results)
+    results = [row[1] for row in results]
+    results = list(map(clean_answer,results))
+    answerlines = [(x,results.count(x)) for x in set(results)]
+    answerlines.sort(reverse=True,key=lambda x:x[1])
+    answerlines = answerlines[:50]
+    only_ans = [x[0] for x in answerlines]
+    # print(', '.join(only_ans))
+    coverage = sum([val[1] for val in answerlines])/total
+    return only_ans,coverage,color
 async def lookup(query,category):
     orig_query = query
     conn, cur = postgres_connect()
@@ -256,7 +296,7 @@ async def lookup(query,category):
     subcategory = subcat_dict.get(subcategory.casefold())
     if category == None and subcategory == None:
         return None
-    if category == 'all' and query != None:
+    if category == 'all' or category == 'ranked' and query != None:
         query = query.replace(' ',' & ')
         executor = f"SELECT tournament_id,answer FROM tossups WHERE to_tsvector('english',answer) @@ to_tsquery('english',%s)"
         values = (query,)
@@ -378,7 +418,7 @@ async def get_tournament(tournament):
     conn, cur = postgres_connect()
     tournament = tournament.replace(' ',' & ')
     executor = f"SELECT id FROM tournaments WHERE to_tsvector('english',name) @@ to_tsquery('english',%s)"
-    values = (tournament)
+    values = (tournament,)
     cur.execute(executor,values)
     results = cur.fetchall()
     try:
@@ -453,6 +493,16 @@ def new_complete_replace_line_bonus(question):
             s = s.replace(char[0],char[1])
     final = (s, orig_a.strip(),a.strip())
     return final
+def clean_answer(ans):
+    formatters = [('*',''), (';',''), ('<em>','*'), (r'</em>','*'), ('<strong>','**'), ('</strong>','**'), ('<u>','__'), ('</u>','__'), ('&lt','<'), ('&gt','>')]
+    patterns = [r"\[\D.*\]",r"\&lt\D.*\&gt", r'\(.*?\)',r'\{.*?\}', r" For 10 points, .*?\w ", r"For 10 points each.*", r"\n\d"]#r'&.*'
+    replacements = ['No. ', 'no. ', 'et. al.', 'et al.','Â', '►', '\(', '\)', 'Sgt.']
+    for i in patterns:
+        ans = re.sub(i, '', ans)
+    for char in formatters:
+        if char[0] in ans:
+            ans = ans.replace(char[0],'')
+    return ans.strip()
 async def make_bonus_cards(cards,id):
     full_path = f"temp/pk_{id}_cards.csv"
     try:
@@ -540,6 +590,7 @@ async def get_csv_tournament(tournament):
     except:
         os.remove(full_path)
         f = open(full_path,"x")
+    f.close()
     tossups = await get_tournament(tournament)
     if tossups == None:
         return None
@@ -549,8 +600,9 @@ async def get_csv_tournament(tournament):
 def main():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
+    result = loop.run_until_complete(get_frequency('all',[1]))
+    # result = loop.run_until_complete(get_csv_tournament('ANFORTAS'))
     # result = loop.run_until_complete(lookup('Rautavaara','fa'))
     # result = loop.run_until_complete(get_csv(['Albert Einstein'],'Science',5,[],True))
-    print(total_difficulties)
 if __name__ == '__main__':
     main()

@@ -5,7 +5,7 @@ import random
 import os
 import nltk.data
 import nltk
-from nltk.tokenize import sent_tokenize
+from nltk.tokenize import sent_tokenize,word_tokenize
 import csv
 import asyncio
 import psycopg2
@@ -143,6 +143,8 @@ first_subcat_dict = {
     'sci:usa': 'Science American',
     'science:bio': 'Science Biology',
     'sci:bio': 'Science Biology',
+    'sci:biology':'Science Biology',
+    'science:biology':'Science Biology',
     'science:chem': 'Science Chemistry',
     'sci:chem': 'Science Chemistry',
     'sci:cs': 'Science Computer Science',
@@ -239,8 +241,11 @@ async def get_tossup(query,category,difficulty):
                     results.remove(res)
     results = list(map(last_two,results))
     return results
-async def get_frequency(category,difficulty):
+async def get_frequency(category,difficulty,terms):
     conn, cur = postgres_connect()
+    if terms != None and len(terms) > 0:
+        terms = terms.strip().casefold()
+        terms = terms.replace(' ',' & ')
     subcategory = category
     if first_cat_dict.get(category.casefold()):
         category = first_cat_dict.get(category.casefold())
@@ -258,14 +263,17 @@ async def get_frequency(category,difficulty):
     #     color = None
     if subcategory == None:
         executor = f"SELECT tournament_id,answer FROM tossups WHERE category_id = %s"
-        values = (category,)
+        values = [category]
         color = color_dict.get(int(category))
-        cur.execute(executor,values)
     elif subcategory != None:
         executor = f"SELECT tournament_id,answer FROM tossups WHERE subcategory_id = %s"
-        values = (subcategory,)
+        values = [subcategory]
         color = color_dict.get(int(subcategory))
-        cur.execute(executor,values)
+    if terms != None and len(terms) > 0:
+        executor = executor + " AND to_tsvector('english',text) @@ to_tsquery('english',%s)"
+        values.append(terms)
+    values = tuple(values)
+    cur.execute(executor,values)
     results = cur.fetchall()
     if len(difficulty) > 0:
         for i,res in enumerate(results[:]):
@@ -280,7 +288,7 @@ async def get_frequency(category,difficulty):
     answerlines = answerlines[:50]
     only_ans = [x[0] for x in answerlines]
     # print(', '.join(only_ans))
-    coverage = sum([val[1] for val in answerlines])/total
+    coverage = 0 if total == 0 else sum([val[1] for val in answerlines])/total
     return only_ans,coverage,color
 async def lookup(query,category):
     orig_query = query
@@ -386,9 +394,12 @@ async def get_bonus(category,difficulty):
                         result.remove(res)
     sampled = []
     num_bonuses = 0
-    for result in results:
-        num_bonuses += len(result)
-        sampled = sampled + random.sample(result,4)
+    try:
+        for result in results:
+            num_bonuses += len(result)
+            sampled = sampled + random.sample(result,4)
+    except:
+        return 'not enough'
     results = sampled
     random.shuffle(results)
     bonuses = []
@@ -414,21 +425,94 @@ async def get_bonus(category,difficulty):
     misc = (num_bonuses,category.capitalize())
     bonuses.append(misc)
     return bonuses
-async def get_tournament(tournament):
+async def get_tk_tossup(category,difficulty):
+    conn, cur = postgres_connect()
+    curly_search =  re.search(r'\{(.*?)\}',category)
+    if curly_search:
+        categories = curly_search.group(1).split(',')
+        category_ids = list(map(get_cat_id,categories))
+        if len(category_ids) == 0:
+            return
+        for x in category_ids.copy():
+            if x == None:
+                return
+        conditions = category_ids
+    else:
+        category_ids = get_cat_id(category)
+        if category_ids == None:
+            return
+        conditions = [category_ids]
+    executions = []
+    if category == 'all':
+        executor = f"SELECT tournament_id,formatted_text,formatted_answer FROM tossups TABLESAMPLE BERNOULLI(0.5) LIMIT 5000"
+        executions.append(executor)
+    else:
+        for x in conditions:
+            executor = f"SELECT tournament_id,formatted_text,formatted_answer FROM tossups WHERE " + x
+            executions.append(executor)
+    results = []
+    for executor in executions:
+        cur.execute(executor)
+        results.append(cur.fetchall())
+    if len(difficulty) > 0:
+        for result in results:
+            for i,res in enumerate(result.copy()):
+                if difficulty_dict.get(res[0]) not in difficulty:
+                    if res in result:
+                        result.remove(res)
+    sampled = []
+    num_tossups = 0
+    try:
+        for result in results:
+            num_tossups += len(result)
+            sampled = sampled + random.sample(result,4)
+    except:
+        return 'not enough'
+    results = sampled
+    random.shuffle(results)
+    results = list(map(lambda x: (difficulty_dict.get(x[0]),x[1],x[2]),results))
+    results = list(map(new_complete_replace_line_tk,results))
+    for i,question in enumerate(results):
+        q = question[0]
+        words = word_tokenize(q)
+        sentences = sent_tokenize(q)
+        max_words = max([len(word_tokenize(x)) for x in sentences])
+        num_sent = len(sentences)
+        results[i] = (question,max_words,words,num_sent)
+    return results[:4]
+async def get_tournament(tournament,category):
+    if category != None:
+        subcategory = category
+        if first_cat_dict.get(category.casefold()):
+            category = first_cat_dict.get(category.casefold())
+        elif first_subcat_dict.get(category.casefold()):
+            subcategory = first_subcat_dict.get(category.casefold())
+        orig_category = category
+        category = cat_dict.get(category.casefold())
+        orig_subcategory = subcategory
+        subcategory = subcat_dict.get(subcategory.casefold())
+        if category == None and subcategory == None:
+            return 'invalid category'
     conn, cur = postgres_connect()
     tournament = tournament.replace(' ',' & ')
-    executor = f"SELECT id FROM tournaments WHERE to_tsvector('english',name) @@ to_tsquery('english',%s)"
+    executor = f"SELECT id,name FROM tournaments WHERE to_tsvector('english',name) @@ to_tsquery('english',%s)"
     values = (tournament,)
     cur.execute(executor,values)
     results = cur.fetchall()
     try:
         id = results[0][0]
+        name = results[0][1]
     except:
         return None
-    executor = f"SELECT text,answer FROM tossups WHERE tournament_id = {id}"
+    if category == None and subcategory == None:
+        executor = f"SELECT text,answer FROM tossups WHERE tournament_id = {id}"
+    elif subcategory == None:
+        executor = f"SELECT text,answer FROM tossups WHERE tournament_id = {id} AND category_id = {category}"
+    else:
+        executor = f"SELECT text,answer FROM tossups WHERE tournament_id = {id} AND subcategory_id = {subcategory}"
     cur.execute(executor)
     results = cur.fetchall()
-    return results
+    return results,name
 def new_complete_replace_line(question):
     s = question[0]
     a = question[1]
@@ -469,22 +553,13 @@ def new_complete_replace_line_bonus(question):
         if char[0] in s:
             s = s.replace(char[0],char[1])
     patterns = [r"\[\D.*\]",r"\&lt\D.*\&gt", r'\(.*?\)',r'\{.*?\}', r" For 10 points, .*?\w ", r"For 10 points each.*", r"\n\d"]#r'&.*'
-    replacements = ['No. ', 'no. ', 'et. al.', 'et al.','Â', '►', '\(', '\)', 'Sgt.']
+    replacements = ['et. al.', 'et al.','Â', '►', '\(', '\)', 'Sgt.']
     for i in patterns:
         replacement = re.sub(i, ' ', s)
         s = replacement
     for i in patterns:
         replacement = re.sub(i, ' ', a)
         a = replacement
-    for x in range(len(replacements)):
-        replacement = re.sub(replacements[x], ' ', s)
-        if replacements[x]=='No.' or replacements[x]=='no.':
-            replacement = re.sub(replacements[x], '#', s)
-        elif replacements[x]=='et. al.' or replacements[x]=='et al.':
-            replacement = re.sub(replacements[x], 'and others', s)
-        elif replacements[x]=='Sgt.':
-            replacement = re.sub(replacements[x], '', s)
-        s = replacement
     s = re.sub(r"\s\n",'',s).strip().replace('  ', '')
     for char in formatters:
         if char[0] in a:
@@ -492,6 +567,32 @@ def new_complete_replace_line_bonus(question):
         if char[0] in s:
             s = s.replace(char[0],char[1])
     final = (s, orig_a.strip(),a.strip())
+    return final
+def new_complete_replace_line_tk(question):
+    diff = question[0]
+    s = question[1]
+    a = question[2]
+    orig_a = a
+    formatters = [('<em>','*'), (r'</em>','*'), ('<strong>','**'), ('</strong>','**'), ('<b>','**'), ('</b>','**'),('<u>','__'), ('</u>','__'), ('&lt','<'), ('&gt','>')]
+    for char in formatters:
+        if char[0] in a:
+            orig_a = orig_a.replace(char[0],char[1])
+        if char[0] in s:
+            s = s.replace(char[0],'')
+    patterns = [r"\[\D.*\]",r"\&lt\D.*\&gt", r'\(.*?\)',r'\{.*?\}', r"\n\d"]
+    replacements = ['Â', '►', 'Sgt.']
+    for i in patterns:
+        replacement = re.sub(i, ' ', a)
+        a = replacement
+    s = re.sub(r"\s\n",'',s).strip().replace('  ', '')
+    for char in formatters:
+        if char[0] in a:
+            a = a.replace(char[0],'')
+        if char[0] in s:
+            s = s.replace(char[0],char[1])
+    if a.strip()[-1] == ';':
+        a = a.strip()[:-1]
+    final = (s, orig_a.strip(),a.strip(),diff)
     return final
 def clean_answer(ans):
     formatters = [('*',''), (';',''), ('<em>','*'), (r'</em>','*'), ('<strong>','**'), ('</strong>','**'), ('<u>','__'), ('</u>','__'), ('&lt','<'), ('&gt','>')]
@@ -566,7 +667,7 @@ async def get_csv(terms,category,id, difficulty,term_by_term,raw):
             return None
         await write_csv(tossups,raw)
     return full_path, total_cards
-async def get_csv_tournament(tournament):
+async def get_csv_tournament(tournament,category):
     def write_csv_tournament(tossups):
         clues = []
         global total_cards
@@ -584,23 +685,23 @@ async def get_csv_tournament(tournament):
                     total_cards += 1
     global total_cards
     total_cards = 0
-    full_path = f"temp/{tournament}{id}_cards.csv"
+    tossups,name = await get_tournament(tournament,category)
+    if tossups == None:
+        return None
+    full_path = f"temp/{name}{id}_cards.csv"
     try:
         f = open(full_path,"x")
     except:
         os.remove(full_path)
         f = open(full_path,"x")
     f.close()
-    tossups = await get_tournament(tournament)
-    if tossups == None:
-        return None
     write_csv_tournament(tossups)
-    return full_path, total_cards
-
+    return full_path, total_cards,name
 def main():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    result = loop.run_until_complete(get_frequency('all',[1]))
+    result = loop.run_until_complete(get_frequency('geo',[3,4,5],None))
+    print(result)
     # result = loop.run_until_complete(get_csv_tournament('ANFORTAS'))
     # result = loop.run_until_complete(lookup('Rautavaara','fa'))
     # result = loop.run_until_complete(get_csv(['Albert Einstein'],'Science',5,[],True))

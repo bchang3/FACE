@@ -472,6 +472,8 @@ async def get_tk_tossup(category,difficulty):
     random.shuffle(results)
     results = list(map(lambda x: (difficulty_dict.get(x[0]),x[1],x[2]),results))
     results = list(map(new_complete_replace_line_tk,results))
+    if 'error' in results:
+        return 'error'
     for i,question in enumerate(results):
         q = question[0]
         words = word_tokenize(q)
@@ -481,6 +483,7 @@ async def get_tk_tossup(category,difficulty):
         results[i] = (question,max_words,words,num_sent)
     return results[:4]
 async def get_tournament(tournament,category):
+    subcategory = None
     if category != None:
         subcategory = category
         if first_cat_dict.get(category.casefold()):
@@ -590,8 +593,11 @@ def new_complete_replace_line_tk(question):
             a = a.replace(char[0],'')
         if char[0] in s:
             s = s.replace(char[0],char[1])
-    if a.strip()[-1] == ';':
-        a = a.strip()[:-1]
+    try:
+        if a.strip()[-1] == ';':
+            a = a.strip()[:-1]
+    except:
+        return 'error'
     final = (s, orig_a.strip(),a.strip(),diff)
     return final
 def clean_answer(ans):

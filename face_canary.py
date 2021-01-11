@@ -23,6 +23,10 @@ import matplotlib.pyplot as plt
 from num2words import num2words
 import math
 import secrets
+from PIL import Image
+import pandas as pd
+import requests
+import json
 PREFIX = ['c ','C ']
 token='NzcwNzY5NDk5MzA1NjcyNzU0.X5iZCA.rrqAHZ_GzKtidTYf7S5Gj9NAn6U'
 intents = discord.Intents.default()
@@ -444,21 +448,21 @@ async def subcats(ctx,cat=None):
 async def tk(ctx,category=None,*difficulty):
     def pred(m):
         return m.author == ctx.author and m.channel == ctx.channel
-    hour = datetime.datetime.now().hour
-    if ctx.author.id == 483405210274889728 and category != 'end':
-        if not (hour >= 23 or hour < 2):
-            token = secrets.token_urlsafe(16)
-            print(token)
-            await ctx.channel.send('Enter the token senpai: ')
-            try:
-                msg = await client.wait_for('message',check=pred,timeout=10)
-            except asyncio.TimeoutError:
-                await ctx.channel.send('Timed out!')
-                return
-            else:
-                if msg.content != token:
-                    await ctx.channel.send('That\'s incorrect...')
-                    return
+    # hour = datetime.datetime.now().hour
+    # if ctx.author.id == 483405210274889728 and category != 'end':
+    #     if not (hour >= 23 or hour < 2):
+    #         token = secrets.token_urlsafe(16)
+    #         print(token)
+    #         await ctx.channel.send('Enter the token senpai: ')
+    #         try:
+    #             msg = await client.wait_for('message',check=pred,timeout=10)
+    #         except asyncio.TimeoutError:
+    #             await ctx.channel.send('Timed out!')
+    #             return
+    #         else:
+    #             if msg.content != token:
+    #                 await ctx.channel.send('That\'s incorrect...')
+    #                 return
     try:
         guild_id = ctx.guild.id
     except:
@@ -516,7 +520,7 @@ async def tk(ctx,category=None,*difficulty):
                 await ctx.channel.send(f'ANSWER: {formatted_answer}')
                 given_abbrev = msg.content.casefold().strip()
                 real_abbrev = ''.join([x[0] for x in raw_answer.casefold().split()])
-                if (30 <= similarity <= 75 or (msg.content.casefold() in formatted_answer.casefold()) or has_num(msg.content.casefold()) or has_num(raw_answer.casefold()) or given_abbrev == real_abbrev) and correct == False:   #;  where should this go follow m
+                if (10 <= similarity <= 75 or (msg.content.casefold() in formatted_answer.casefold()) or has_num(msg.content.casefold()) or has_num(raw_answer.casefold()) or given_abbrev == real_abbrev) and correct == False:   #;  where should this go follow m
                     await ctx.channel.send('Were you correct? Respond with `y` or `n`')
                     try:
                         msg = await client.wait_for('message', check=ans_player.pred,timeout=10)
@@ -546,11 +550,11 @@ async def tk(ctx,category=None,*difficulty):
             self.members = members
             self.authors = [x.author for x in members]
             def team_pred(m):
-                return ((m.author == ctx.author or m.author in self.authors) and m.channel == ctx.channel)
+                return ((m.author == ctx.author or m.author in self.authors) and m.channel == ctx.channel) and m.channel == ctx.channel
             def team_buzz_pred(m):
-                return ((m.author == ctx.author or m.author in self.authors) and m.channel == ctx.channel) and m.content.casefold() in ['buzz','m skip','m tk end','c tk end','c skip']
+                return ((m.author == ctx.author or m.author in self.authors) and m.channel == ctx.channel) and m.content.casefold() in ['buzz','m skip','m tk end','c tk end','c skip'] and m.channel == ctx.channel
             def continue_pred(m):
-                return ((m.author == ctx.author or m.author in self.authors) and m.channel == ctx.channel) and m.content.casefold() in ['c next','m next','c tk end','m tk end']
+                return ((m.author == ctx.author or m.author in self.authors) and m.channel == ctx.channel) and m.content.casefold() in ['c next','m next','c tk end','m tk end'] and m.channel == ctx.channel
             self.buzzpred = team_buzz_pred
             self.continuepred = continue_pred
             self.pred = team_pred
@@ -623,9 +627,9 @@ async def tk(ctx,category=None,*difficulty):
             def pred(m):
                 return m.author == self.author and m.channel == ctx.channel
             def buzz_pred(m):
-                return m.author == self.author and m.channel == ctx.channel and m.content.casefold() in ['buzz','m skip','m tk end','c tk end']
+                return m.author == self.author and m.channel == ctx.channel and m.content.casefold() in ['buzz','m skip','m tk end','c tk end'] and m.channel == ctx.channel
             def continue_pred(m):
-                return (m.author == self.author and m.channel == ctx.channel) and m.content.casefold() in ['c next','m next','c tk end','m tk end']
+                return (m.author == self.author and m.channel == ctx.channel) and m.content.casefold() in ['c next','m next','c tk end','m tk end'] and m.channel == ctx.channel
             self.pred = pred
             self.buzzpred = buzz_pred
             self.continuepred = continue_pred
@@ -760,6 +764,10 @@ async def tk(ctx,category=None,*difficulty):
         await ctx.channel.send('Not enough tossups found!')
         in_tk.remove(ctx.author.id)
         return
+    elif tossups == 'error':
+        await ctx.channel.send('There was an error...please try again.')
+        in_tk.remove(ctx.author.id)
+        return
     else:
         game_end = False
         id = ctx.author.id
@@ -780,19 +788,37 @@ async def tk(ctx,category=None,*difficulty):
                 return
             if team.tossups_heard > 0:
                 tossups = await FACE.get_tk_tossup(category,difficulty)
+                if tossups == 'error':
+                    await ctx.channel.send('There was an error...please try again. Ending the tk.')
+                    embed = await team.get_embed(category,is_team,guild_id)
+                    await ctx.channel.send(embed=embed)
+                    close_tk.remove(id)
+                    in_tk.remove(id)
+                    return
             for i,q in enumerate(tossups):
-                skip = False
-                question = q[0][0]
-                raw_answer = q[0][2]
-                formatted_answer = q[0][1]
-                tk_difficulty = q[0][3]
-                words = q[2]
-                num_words = len(q[2])
-                sentences = q[3]
-                max_words = q[1]
-                edits = math.ceil(num_words/5)
-                edits_left = edits-1
-                mark = question.find(words[4])+len(words[4])
+                try:
+                    skip = False
+                    question = q[0][0]
+                    raw_answer = q[0][2]
+                    formatted_answer = q[0][1]
+                    tk_difficulty = q[0][3]
+                    words = q[2]
+                    num_words = len(q[2])
+                    sentences = q[3]
+                    max_words = q[1]
+                    edits = math.ceil(num_words/5)
+                    edits_left = edits-1
+                except:
+                    await ctx.channel.send('There was an error...please try again. Ending the tk.')
+                    embed = await team.get_embed(category,is_team,guild_id)
+                    await ctx.channel.send(embed=embed)
+                    close_tk.remove(id)
+                    in_tk.remove(id)
+                    return
+                try:
+                    mark = question.find(words[4])+len(words[4])
+                except:
+                    continue
                 tu_msg = await ctx.channel.send(question[:mark])
                 correct = False
                 while edits_left > 0:
@@ -889,21 +915,21 @@ async def tk(ctx,category=None,*difficulty):
 async def pk(ctx,category=None,*difficulty):
     def pred(m):
         return m.author == ctx.author and m.channel == ctx.channel and not m.content.startswith('~')
-    hour = datetime.datetime.now().hour
-    if ctx.author.id == 483405210274889728 and category != 'end':
-        if not (hour >= 23 or hour < 2):
-            token = secrets.token_urlsafe(16)
-            print(token)
-            await ctx.channel.send('Enter the token senpai: ')
-            try:
-                msg = await client.wait_for('message',check=pred,timeout=10)
-            except asyncio.TimeoutError:
-                await ctx.channel.send('Timed out!')
-                return
-            else:
-                if msg.content != token:
-                    await ctx.channel.send('That\'s incorrect...')
-                    return
+    # hour = datetime.datetime.now().hour
+    # if ctx.author.id == 483405210274889728 and category != 'end':
+    #     if not (hour >= 23 or hour < 2):
+    #         token = secrets.token_urlsafe(16)
+    #         print(token)
+    #         await ctx.channel.send('Enter the token senpai: ')
+    #         try:
+    #             msg = await client.wait_for('message',check=pred,timeout=10)
+    #         except asyncio.TimeoutError:
+    #             await ctx.channel.send('Timed out!')
+    #             return
+    #         else:
+    #             if msg.content != token:
+    #                 await ctx.channel.send('That\'s incorrect...')
+    #                 return
     try:
         guild_id = ctx.guild.id
     except:
@@ -1343,9 +1369,9 @@ async def practice(ctx,extra=None):
         nonlocal buzzes
         nonlocal ffa
         if not ffa:
-            return ((m.author in players and m.content.lower().startswith('buzz')) and directory.get(m.author.id).team not in buzzes) or (m.author == moderator and m.content == 'm next') or end_pred(m)
+            return ((m.author in players and m.content.lower().startswith('buzz')) and directory.get(m.author.id).team not in buzzes) or (m.author == moderator and m.content == 'm next') or end_pred(m) and m.channel == ctx.channel
         else:
-            return ((m.author in players and m.content.lower().startswith('buzz')) and directory.get(m.author.id) not in buzzes) or (m.author == moderator and m.content == 'm next') or end_pred(m)
+            return ((m.author in players and m.content.lower().startswith('buzz')) and directory.get(m.author.id) not in buzzes) or (m.author == moderator and m.content == 'm next') or end_pred(m) and m.channel == ctx.channel
     def grade_pred(m): # used to grade a tossup answer
         return ((m.author == moderator) and m.content in (ten+power+neg+zero)) or end_pred(m)
     def mod_next(m): # used for advancing tossups after bonuses
@@ -1413,7 +1439,7 @@ async def practice(ctx,extra=None):
     else:
         msg = await ctx.channel.send('React to this message to join the practice!')
         await msg.add_reaction('🅰️')
-    while time.time() - start < 15:#change to 30
+    while time.time() - start < 30:#change to 30
         try:
             reaction,user = await client.wait_for('reaction_add', timeout=10,check=check)
         except asyncio.TimeoutError:
@@ -1577,7 +1603,7 @@ async def practice(ctx,extra=None):
             stat_line = f'{player.powers}/{player.tens}/{player.negs}: {player.total_points}'
             B_str += f'\n**{i+1}**. {player.author.name} **---** {stat_line}\nPP20TUH:{20*(player.total_points/tossup_num):.2f}'
         embed.add_field(name='**Team B**',value=B_str)
-    embed.set_footer(text='Close game!')
+    embed.set_footer(text='Good game!')
     await ctx.channel.send(embed=embed)
 @client.command (name='tournament')
 async def tournament(ctx,*tournament):
@@ -1858,7 +1884,6 @@ async def thoth(ctx):
         try:
             msg = await client.wait_for('message',check=pred,timeout=60)
         except asyncio.TimeoutError:
-            await ctx.channel.send('Timed out! Saving data... Use `m thoth` to resume.')
             return False
         else:
             return msg
@@ -1886,6 +1911,11 @@ async def thoth(ctx):
                 mycursor.execute(f'UPDATE tournament_info SET num_rounds = %s',(int(msg.content),))
                 mydb.commit()
                 await ctx.channel.send(f'{int(msg.content)} rounds set :white_check_mark:')
+            else:
+                await ctx.channel.send('That is not a valid response! Use `m thoth` to resume the process.')
+                mycursor.execute(f"UPDATE tournament_info SET stage = {stg_num}")
+                mydb.commit()
+                return False
     async def create_server(ctx,stg_num):
         await ctx.channel.send('`Creating server...Please allow for up to 30 seconds. The bot will tell you when to continue.`')
         selection = f"SELECT num_teams,num_rounds FROM tournament_info WHERE server_id = {ctx.guild.id}"
@@ -1899,15 +1929,100 @@ async def thoth(ctx):
                     await cat.create_text_channel(name=f'Room {x+1} Round {i+1} ')
                 await cat.create_voice_channel(name=f'Room {x+1} Voice Channel')
         except discord.Forbidden:
-            await ctx.channel.send('Please enable the **adminstrator permission** for FACE so that FACE can configure the server. This can be done by pressing the arrow next to the server name --> server settings --> roles --> FACE --> checking `administrator`.')
+            await ctx.channel.send('Please enable the **adminstrator permission** for FACE so that FACE can configure the server. This can be done by pressing the arrow next to the server name --> server settings --> roles --> FACE --> checking `administrator`.\n**Use `m thoth` to resume the process**')
             mycursor.execute(f"UPDATE tournament_info SET stage = {stg_num}")
             mydb.commit()
             return False
-    stages = [take_num_teams,take_num_rounds,create_server]
+    async def generate_colors(ctx,stg_num):
+        selection = f"SELECT num_teams FROM tournament_info WHERE server_id = {ctx.guild.id}"
+        mycursor.execute(selection)
+        num_teams = mycursor.fetchone()[0]
+        results = [[],[],[]]
+        first = (255, 255, 255)
+        second = 'flor'
+        third = 'neon'
+        seeds = [first,second,third]
+        for i in range(num_teams):
+            for n,seed in enumerate(seeds):
+                if seed == 'neon':
+                    rand_neon = [random.randint(100,255),random.randint(100,255),0]
+                    random.shuffle(rand_neon)
+                    color = tuple(rand_neon)
+                elif seed == 'flor':
+                    rand_flor = [random.randint(50,255),random.randint(50,255),random.randint(50,255)]
+                    random.shuffle(rand_flor)
+                    color = tuple(rand_flor)
+                else:
+                    color = (int((random.randint(0,256)+seed[0])//2),int((random.randint(0,256)+seed[1])//2),int((random.randint(0,256)+seed[2])//2))
+                results[n].append(color)
+        paths = []
+        for option,palette in enumerate(results):
+            color_photo = Image.new('RGB', (15*6, -(-num_teams//6)*15))
+            col = 0
+            y_cor = 0
+            for row in range(-(-num_teams//6)):
+                x_cor = 0
+                for i in range(6):
+                    if col >= len(palette):
+                        break
+                    color_photo.paste(Image.new('RGB', (15, 15), palette[col]),(x_cor, y_cor, x_cor + 15, y_cor + 15))
+                    col += 1
+                    x_cor += 15
+                y_cor += 15
+            path = f'temp/Tournament_{ctx.guild.id}_Option{option}.png'
+            paths.append(path)
+            color_photo.save(path)
+        for path in paths:
+            await ctx.channel.send(file=discord.File(path))
+            os.remove(path)
+        await ctx.channel.send('Respond with the number corresponding to the color palette you would like for the team colors! (`1`, `2`,or `3`)')
+        msg = await take_answer(ctx)
+        if msg == False:
+            await ctx.channel.send('Timed out! Use `m thoth` to resume the process')
+            mycursor.execute(f"UPDATE tournament_info SET stage = {stg_num}")
+            mydb.commit()
+            return False
+        else:
+            if msg.content in ['1','2','3']:
+                palette = results[int(msg.content)-1]
+                s = json.dumps(palette)
+                mycursor.execute(f"UPDATE tournament_info SET palette = '{s}'")
+                mydb.commit()
+                await ctx.channel.send('Palette succesfully set! :white_check_mark:')
+            else:
+                await ctx.channel.send('That was not a valid response! Use `m thoth` to resume the process when you are ready.')
+    async def take_teams(ctx,stg_num):
+        def pred(m):
+            return m.channel == ctx.channel and m.author == ctx.author
+        await ctx.channel.send('Please send a spreadsheet with the team names and team members. Please use the same format as this example.')
+        msg = await take_answer(ctx)
+        if msg == False:
+            await ctx.channel.send('Timed out! Use `m thoth` to resume the process when you are ready.')
+            mycursor.execute(f"UPDATE tournament_info SET stage = {stg_num}")
+            mydb.commit()
+            return False
+        else:
+            path = f'temp/{ctx.author.id}_Tournament_Info.xlsx'
+            spreadsheet = requests.get(msg.attachments[0].url,allow_redirects=True)
+            open(path, 'wb').write(spreadsheet.content)
+            df = pd.read_excel(path)
+            df = df.dropna(axis = 0, how = 'all')
+            columns = list(df.columns)
+            for index, row in df.iterrows():
+                team_header = columns[0]
+                members = list(row)[1:]
+                members = [x for x in members if pd.isnull(x) == False]
+                str_members = ','.join(members)
+                mycursor.execute(f"INSERT INTO Teams (server_id,role_id,team_name,members) VALUES ({ctx.guild.id},{index},'{row[team_header]}','{str_members}')")
+            os.remove(path)
+    async def make_team_roles(ctx,stg_num):
+        None
+    stages = [take_num_teams,take_num_rounds,create_server,generate_colors,take_teams]
     if is_owner(ctx) == True:
         mycursor.execute(f"SELECT * FROM tournament_info WHERE server_id = {ctx.guild.id}")
         row = mycursor.fetchone()
         if row == None:
+            stage_num = 0
             await ctx.channel.send('Is this the server that you want to host the tournament in? `y` or `n`')
             try:
                 msg = await client.wait_for('message',check=pred,timeout=10)
@@ -1933,12 +2048,16 @@ async def thoth(ctx):
                     return
         else:
             stage_num = row[2]
+            stage_num = 0 if stage_num == None else stage_num
             await ctx.channel.send('Resuming THOTH :writing_hand:')
             stages = stages[stage_num:]
         for i,func in enumerate(stages):
             result = await func(ctx,i)
             if result == False:
                 return
+            stage_num += 1
+        mycursor.execute(f"UPDATE tournament_info SET stage = {stage_num}")
+        mydb.commit()
 @client.command (name='guilds')
 async def guilds(ctx):
     if ctx.message.author.id == 435504471343235072 or ctx.message.author.id == 483405210274889728:

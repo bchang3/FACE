@@ -175,18 +175,21 @@ first_subcat_dict = {
 conn, cur = postgres_connect()
 
 cat_dict = dict()
+reverse_cat_dict = dict()
 cur.execute('SELECT * FROM categories')
 cat_rows = cur.fetchall()
 for row in cat_rows:
     cat_dict[row[1].casefold()] = int(row[0])
+    reverse_cat_dict[int(row[0])] = row[1]
 cat_dict['all'] = 'all'
 
 subcat_dict = dict()
+reverse_subcat_dict = dict()
 cur.execute('SELECT * FROM subcategories')
 subcat_rows = cur.fetchall()
 for row in subcat_rows:
     subcat_dict[row[1].casefold()] = int(row[0])
-
+    reverse_subcat_dict[int(row[0])] = row[1]
 cur.execute('SELECT * FROM tournaments')
 tournament_rows = cur.fetchall()
 difficulty_dict = dict()
@@ -234,7 +237,7 @@ async def get_tossup(query,category,difficulty):
             values = (query,category)
     cur.execute(executor,values)
     results = cur.fetchall()
-    if len(difficulty) > 0:
+    if difficulty and len(difficulty) > 0:
         for i,res in enumerate(results[:]):
             if difficulty_dict.get(res[0]) not in difficulty:
                 if res in results:
@@ -444,11 +447,11 @@ async def get_tk_tossup(category,difficulty):
         conditions = [category_ids]
     executions = []
     if category == 'all':
-        executor = f"SELECT tournament_id,formatted_text,formatted_answer FROM tossups TABLESAMPLE BERNOULLI(0.5) LIMIT 5000"
+        executor = f"SELECT tournament_id,formatted_text,formatted_answer,id,category_id,subcategory_id FROM tossups TABLESAMPLE BERNOULLI(0.5) LIMIT 5000"
         executions.append(executor)
     else:
         for x in conditions:
-            executor = f"SELECT tournament_id,formatted_text,formatted_answer FROM tossups WHERE " + x
+            executor = f"SELECT tournament_id,formatted_text,formatted_answer,id,category_id,subcategory_id FROM tossups WHERE " + x
             executions.append(executor)
     results = []
     for executor in executions:
@@ -470,7 +473,7 @@ async def get_tk_tossup(category,difficulty):
         return 'not enough'
     results = sampled
     random.shuffle(results)
-    results = list(map(lambda x: (difficulty_dict.get(x[0]),x[1],x[2]),results))
+    results = list(map(lambda x: (difficulty_dict.get(x[0]),x[1],x[2],x[3],x[4],x[5]),results))
     results = list(map(new_complete_replace_line_tk,results))
     if 'error' in results:
         return 'error'
@@ -575,6 +578,10 @@ def new_complete_replace_line_tk(question):
     diff = question[0]
     s = question[1]
     a = question[2]
+    if len(question) > 3:
+        id = question[3]
+        category = reverse_cat_dict.get(question[4])
+        subcategory = reverse_subcat_dict.get(question[5])
     orig_a = a
     formatters = [('<em>','*'), (r'</em>','*'), ('<strong>','**'), ('</strong>','**'), ('<b>','**'), ('</b>','**'),('<u>','__'), ('</u>','__'), ('&lt','<'), ('&gt','>')]
     for char in formatters:
@@ -598,7 +605,10 @@ def new_complete_replace_line_tk(question):
             a = a.strip()[:-1]
     except:
         return 'error'
-    final = (s, orig_a.strip(),a.strip(),diff)
+    if len(question) > 3:
+        final = (s, orig_a.strip(),a.strip(),diff,id,category,subcategory)
+    else:
+        final = (s, orig_a.strip(),a.strip(),diff)
     return final
 def clean_answer(ans):
     formatters = [('*',''), (';',''), ('<em>','*'), (r'</em>','*'), ('<strong>','**'), ('</strong>','**'), ('<u>','__'), ('</u>','__'), ('&lt','<'), ('&gt','>')]

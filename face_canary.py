@@ -149,7 +149,7 @@ async def premium(id,ctx):
         return True
     else:
         return False
-async def get_difficulty(difficulty,ctx,in_list):
+async def get_difficulty(difficulty,ctx,in_list=None):
     new_numbers = []
     for x in difficulty:
         if x[0] == '[':
@@ -186,6 +186,60 @@ async def get_difficulty(difficulty,ctx,in_list):
                     return
                 new_numbers = list(set(new_numbers))
     return new_numbers
+practice_sim_dict = dict()
+class TK_Player():
+    def __init__(self,author,team,ctx):
+        self.ctx = ctx
+        self.author = author
+        self.total_points = 0
+        self.tossups_heard = 0
+        self.powers = 0
+        self.tens = 0
+        self.negs = 0
+        self.team=team
+        self.answerlines_missed = []
+        self.cdepths = []
+        def pred(m):
+            return m.author == self.author and m.channel == self.ctx.channel
+        def any_pred(m):
+            return m.author == self.author
+        self.pred = pred
+        self.any_pred = any_pred
+    def update(self,res):
+        points = res[0]
+        cdepth = res[1]
+        self.total_points += points
+        if points == 15:
+            self.cdepths.append(cdepth)
+            self.team.team_points += 15
+            self.powers += 1
+        elif points == 10:
+            self.cdepths.append(cdepth)
+            self.team.team_points += 10
+            self.tens += 1
+        elif points == -5:
+            self.team.team_points -= 5
+            self.negs += 1
+class PR_Player():
+    def __init__(self,author,team):
+        self.author = author
+        self.total_points = 0
+        self.tossups_heard = 0
+        self.powers = 0
+        self.tens = 0
+        self.negs = 0
+        self.team=team
+    def update(self,points):
+        self.total_points += points
+        if points == 15:
+            self.team.team_points += 15
+            self.powers += 1
+        elif points == 10:
+            self.team.team_points += 10
+            self.tens += 1
+        elif points == -5:
+            self.team.team_points -= 5
+            self.negs += 1
 N_e = 0 #number of questions seen
 m = 0 #number of tournaments
 @client.command (name='end')
@@ -777,8 +831,8 @@ async def tk(ctx,category=None,*difficulty):
         pred_to_use = team.pred
         continue_pred_to_use = team.continuepred
         buzz_pred_to_use = team.buzzpred
-        player_up = team
-        await ctx.channel.send('**INSTRUCTIONS**\n**---** Use `m next` to get the next question\n**---** Use `m tk end` to end the game.')
+        player_up = team #BOOKMARK
+        await ctx.channel.send('**INSTRUCTIONS**\n**---** Use `m next` to get the next question and `buzz` to buzz\n**---** Use `m tk end` to end the game.')
         while True:
             if id in close_tk:
                 embed = await team.get_embed(category,is_team,guild_id)
@@ -1348,6 +1402,8 @@ async def pk(ctx,category=None,*difficulty):
             in_pk.remove(id)
 @client.command (name='practice')
 async def practice(ctx,extra=None):
+    if practice_sim_dict.get(ctx.channel.id):
+        await ctx.channel.send('There is already a practice in this channel!')
     try:
         await add_count(ctx.guild.id)
     except:
@@ -1407,26 +1463,26 @@ async def practice(ctx,extra=None):
             self.directory = dict()
             for player in self.players:
                 self.directory[player.author.id] = player
-    class Player():
-        def __init__(self,author,team):
-            self.author = author
-            self.total_points = 0
-            self.tossups_heard = 0
-            self.powers = 0
-            self.tens = 0
-            self.negs = 0
-            self.team=team
-        def update(self,points):
-            self.total_points += points
-            if points == 15:
-                self.team.team_points += 15
-                self.powers += 1
-            elif points == 10:
-                self.team.team_points += 10
-                self.tens += 1
-            elif points == -5:
-                self.team.team_points -= 5
-                self.negs += 1
+    # class Player():
+    #     def __init__(self,author,team):
+    #         self.author = author
+    #         self.total_points = 0
+    #         self.tossups_heard = 0
+    #         self.powers = 0
+    #         self.tens = 0
+    #         self.negs = 0
+    #         self.team=team
+    #     def update(self,points):
+    #         self.total_points += points
+    #         if points == 15:
+    #             self.team.team_points += 15
+    #             self.powers += 1
+    #         elif points == 10:
+    #             self.team.team_points += 10
+    #             self.tens += 1
+    #         elif points == -5:
+    #             self.team.team_points -= 5
+    #             self.negs += 1
     start = time.time()
     Team_A = Team([],'A Team')
     Team_B = Team([],'B Team')
@@ -1448,9 +1504,9 @@ async def practice(ctx,extra=None):
             if user not in players:
                 players.append(user)
                 if str(reaction.emoji) == '🅰️':
-                    Team_A.players.append(Player(user,Team_A))
+                    Team_A.players.append(PR_Player(user,Team_A))
                 else:
-                    Team_B.players.append(Player(user,Team_B))
+                    Team_B.players.append(PR_Player(user,Team_B))
             else:
                 try:
                     await msg.remove_reaction(str(reaction.emoji),user)
@@ -1499,7 +1555,12 @@ async def practice(ctx,extra=None):
     Team_A.init_directory()
     Team_B.init_directory()
     directory = {**Team_A.directory, **Team_B.directory}
+    practice_sim_dict[ctx.channel.id] = [ffa,'practice',moderator,Team_A,Team_B,ctx]
     while game:
+        Team_A.init_directory()
+        Team_B.init_directory()
+        directory = {**Team_A.directory, **Team_B.directory}
+        players = [x.author for x in Team_A.players + Team_B.players]
         #await ctx.channel.send(f'{tossup_num}, {next_num}')
         if tossup_num >= next_num:
             buzzes = []
@@ -1512,7 +1573,7 @@ async def practice(ctx,extra=None):
             try:
                 response = await client.wait_for('message',check=pred,timeout=20)
             except:
-                return
+                break
             else:
                 continue
         else:
@@ -1522,10 +1583,9 @@ async def practice(ctx,extra=None):
             if msg.content == 'm next':
                 tossup_num += 1
                 continue
-            if msg.author != moderator:
-                await ctx.channel.send(f'{moderator.mention} `buzz from {msg.author.name}`')
-                buzzer =  directory.get(msg.author.id)
-                answering_team = buzzer.team if not ffa else buzzer
+            await ctx.channel.send(f'{moderator.mention} `buzz from {msg.author.name}`')
+            buzzer =  directory.get(msg.author.id)
+            answering_team = buzzer.team if not ffa else buzzer
             try:
                 grade = await client.wait_for('message',check=grade_pred,timeout=300)
             except asyncio.TimeoutError:
@@ -1563,8 +1623,16 @@ async def practice(ctx,extra=None):
                     try:
                         next_msg = await client.wait_for('message',check=mod_next,timeout=300)
                     except asyncio.TimeoutError:
-                        await ctx.channel.send('No activity for 5 minutes, ending practice...')
-                        return
+                        def still_here(m):
+                            return m.channel == ctx.channel and m.content.lower() == 'resume'
+                        await ctx.channel.send('Are you still there? Respond with `resume` to stop the practice from ending.')
+                        try:
+                            response = await client.wait_for('message',check=still_here,timeout=60)
+                        except asyncio.TimeoutError:
+                            break
+                        else:
+                            await ctx.channel.send('Practice resuming!')
+                            continue
                     else:
                         if next_msg.content == 'm practice end':
                             await ctx.channel.send('**Practice ended.**')
@@ -1573,8 +1641,16 @@ async def practice(ctx,extra=None):
                         try:
                             bonus_points = await client.wait_for('message',check=grade_bonus,timeout=300)
                         except asyncio.TimeoutError:
-                            await ctx.channel.send('No activity for 5 minutes, ending practice...')
-                            return
+                            def still_here(m):
+                                return m.channel == ctx.channel and m.content.lower() == 'resume'
+                            await ctx.channel.send('Are you still there? Respond with `resume` to stop the practice from ending.')
+                            try:
+                                response = await client.wait_for('message',check=still_here,timeout=60)
+                            except asyncio.TimeoutError:
+                                break
+                            else:
+                                await ctx.channel.send('Practice resuming!')
+                                continue
                         else:
                             if bonus_points.content == 'm practice end':
                                 await ctx.channel.send('**Practice ended.**')
@@ -1585,6 +1661,7 @@ async def practice(ctx,extra=None):
                                 answering_team.total_points += int(bonus_points.content)
                 elif len(buzzes) == practice_size and correct == False: #change to practice_size
                     tossup_num += 1
+    del practice_sim_dict[ctx.channel.id]
     embed = discord.Embed (
     title='Practice Stats',
     colour=	0x83e6d0,
@@ -1605,6 +1682,480 @@ async def practice(ctx,extra=None):
         embed.add_field(name='**Team B**',value=B_str)
     embed.set_footer(text='Good game!')
     await ctx.channel.send(embed=embed)
+@client.command (name='sim')
+async def sim(ctx,category=None,*difficulty):
+    if category == None:
+        await ctx.channel.send('You used the wrong format! Use the command `m tk *category* *[difficulty]*`, e.g. `m tk sci [3-7]` or `m tk sci:bio [1-9]`')
+        return
+    try:
+        await add_count(ctx.guild.id)
+    except:
+        None
+    if category == 'end':
+        return
+    difficulty = list(difficulty)
+    brackets = False
+    numbers = False
+    for arg in difficulty:
+        for char in arg:
+            if char == '[':
+                brackets = True
+            if char.isdigit() == True:
+                numbers = True
+    if numbers and not brackets:
+        await ctx.channel.send('Please use brackets when specifying difficulty.')
+        return
+    ffa = True if 'ffa' in difficulty else False
+    if 'ffa' in difficulty:
+        difficulty.remove('ffa')
+    def pred(m):
+        return m.author == ctx.author and m.channel == ctx.channel
+    def end_pred(m):
+        return m.content == 'm sim end' and (m.author== moderator or m.author == ctx.author)
+    def check(reaction, user):
+        nonlocal msg
+        return (str(reaction.emoji) == '🇧' or str(reaction.emoji) == '🅰️') and user != client.user and reaction.message.id == msg.id
+    def moderator_pred(m): #used to appoint a moderator
+        return m.author == ctx.author and m.channel == ctx.channel and len(m.mentions) > 0
+    def buzz_pred(m):
+        nonlocal directory
+        nonlocal buzzes
+        nonlocal ffa
+        if not ffa:
+            return ((m.author in players and m.content.lower().startswith('buzz')) and directory.get(m.author.id).team not in buzzes) or (m.author == moderator and m.content == 'm next') or end_pred(m) and m.channel == ctx.channel
+        else:
+            return ((m.author in players and m.content.lower().startswith('buzz')) and directory.get(m.author.id) not in buzzes) or (m.author == moderator and m.content == 'm next') or end_pred(m) and m.channel == ctx.channel
+    def grade_pred(m): # used to grade a tossup answer
+        return (((m.author == moderator) and m.content.casefold() in ['y','n']) or end_pred(m)) and m.channel == ctx.channel
+    def mod_next(m): # used for advancing tossups after bonuses
+        return (((m.author == moderator) and m.content.startswith('m next')) or end_pred(m)) and m.channel == ctx.channel
+    async def take_answer(end_question,ans_player,edits_left=0,total_edits=0):
+        cdepth = (total_edits - edits_left)/total_edits * 100 if total_edits > 0 else None
+        cdepth = 100 if cdepth == 0 else cdepth
+        try:
+            msg = await client.wait_for('message', check=ans_player.pred,timeout=10)
+        except asyncio.TimeoutError:
+            add_points = -5 if end_question == False else 0
+            await ctx.channel.send(f':x: `{add_points}`')
+            await ctx.channel.send(formatted_answer)
+        else:
+            if msg.content != 'm sim end':
+                def find_ans(ans,key):
+                    if ans.find(key)==-1:
+                        return
+                    else:
+                        first = ans.find(key)+2
+                    second = ans.find(key,first)
+                    new_str = ans[first:second]
+                    return new_str
+                underlined_portion = find_ans(formatted_answer,'__')
+                underlined_portion = find_ans(formatted_answer,'**') if underlined_portion == None else underlined_portion
+                underlined_portion = underlined_portion.casefold() if underlined_portion else underlined_portion
+                no_response = 0
+                similarity = fuzz.ratio(raw_answer.casefold(),msg.content.casefold())
+                if similarity > 80 or msg.content.casefold() == underlined_portion:
+                    add_points = 15 if ('(*)' not in tu_msg.content and '(*)' in question) else 10
+                    await ctx.channel.send(f'`{add_points}`')
+                    await ctx.channel.send(f'ANSWER: {formatted_answer}')
+                    correct = True
+                else:
+                    add_points = -5 if end_question == False else 0
+                    await ctx.channel.send(f':x: `{add_points}`')
+                    ans_player.answerlines_missed.append(raw_answer)
+                    correct = False
+                given_abbrev = msg.content.casefold().strip()
+                real_abbrev = ''.join([x[0] for x in raw_answer.casefold().split()])
+                if (10 <= similarity <= 75 or (msg.content.casefold() in formatted_answer.casefold()) or has_num(msg.content.casefold()) or has_num(raw_answer.casefold()) or given_abbrev == real_abbrev) and correct == False:   #;  where should this go follow m
+                    await ans_player.author.send(f'ANSWER: {formatted_answer}')
+                    await ans_player.author.send(f'Is the answer correct? Respond with `y` or `n`')
+                    try:
+                        msg = await client.wait_for('message', check=ans_player.any_pred,timeout=10)
+                    except asyncio.TimeoutError:
+                        None
+                    else:
+                        if msg.content != 'm sim end':
+                            if msg.content.lower().startswith('n'):
+                                add_points = -5 if end_question == False else 0
+                                await ctx.channel.send(f':x: `{add_points}`')
+                            elif msg.content.lower().startswith('y'):
+                                correct = True
+                                add_points = 15 if ('(*)' not in tu_msg.content and '(*)' in question) else 10
+                                await ctx.channel.send(f'ANSWER: {formatted_answer}')
+                                ans_player.answerlines_missed.remove(raw_answer)
+                                await ctx.channel.send(f'`{add_points}`')
+                            else:
+                                add_points = -5 if end_question == False else 0
+                                await ctx.channel.send('Not a valid response! :x: `-5`')
+                        else:
+                            return 'end'
+            else:
+                return 'end'
+        return add_points,cdepth
+    bonuses = False
+    # await ctx.channel.send('Do you want to practice with bonuses? (Y/N)')
+    # try:
+    #     msg = await client.wait_for('message',check=pred,timeout=15)
+    # except asyncio.TimeoutError:
+    #     await ctx.channel.send('Practice timed out...')
+    #     return
+    # else:
+    #     if msg.content.casefold().startswith('y'):
+    #         await ctx.channel.send('Bonuses enabled :white_check_mark:.')
+    #         bonuses = True
+    #     elif msg.content.casefold().startswith('n'):
+    #         await ctx.channel.send('Bonuses disabled :x:.')
+    #         bonuses = False
+    #     else:
+    #         await ctx.channel.send('Not a valid response. Ending practice...')
+    #         return
+    class Team():
+        def __init__(self, players, name):
+            self.players = players
+            self.name = name
+            self.team_points = 0
+            self.tossups_heard = 0
+            self.powers = 0
+        def init_directory(self):
+            self.directory = dict()
+            for player in self.players:
+                self.directory[player.author.id] = player
+
+    # class Player():
+    #     def __init__(self,author,team):
+    #         self.author = author
+    #         self.total_points = 0
+    #         self.tossups_heard = 0
+    #         self.powers = 0
+    #         self.tens = 0
+    #         self.negs = 0
+    #         self.team=team
+    #         self.answerlines_missed = []
+    #         self.cdepths = []
+    #         def pred(m):
+    #             return m.author == self.author and m.channel == ctx.channel
+    #         def any_pred(m):
+    #             return m.author == self.author
+    #         self.pred = pred
+    #         self.any_pred = any_pred
+    #     def update(self,res):
+    #         points = res[0]
+    #         cdepth = res[1]
+    #         self.total_points += points
+    #         if points == 15:
+    #             self.cdepths.append(cdepth)
+    #             self.team.team_points += 15
+    #             self.powers += 1
+    #         elif points == 10:
+    #             self.cdepths.append(cdepth)
+    #             self.team.team_points += 10
+    #             self.tens += 1
+    #         elif points == -5:
+    #             self.team.team_points -= 5
+    #             self.negs += 1
+    class game_info():
+        def __init__(self):
+            self.tossups = []
+            self.dict_buzzers = dict()
+            self.sort_buzzes = {15:0,10:1,0:2,-5:3}
+        def get_spreadsheet(self):
+            full_path = f'temp/{int(time.time())}_sim_results.csv'
+            try:
+                f = open(full_path,"x")
+            except:
+                os.remove(full_path)
+                f = open(full_path,"x")
+            f.close()
+            with open(full_path, mode='a') as practice_csv:
+                card_writer = csv.writer(practice_csv, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+                card_writer.writerow(['tossup_num','tossup_id','category','subcategory','powers','tens','zeros','negs'])
+                for id,category,subcategory,tossup_num in self.tossups:
+                    buzz_info = self.dict_buzzers.get(tossup_num)
+                    powers = '\\,'.join(buzz_info[0])
+                    tens = '\\,'.join(buzz_info[1])
+                    zeros = '\\,'.join(buzz_info[2])
+                    negs = '\\,'.join(buzz_info[3])
+                    card_writer.writerow([tossup_num,id,category,subcategory,powers,tens,zeros,negs])
+            return full_path
+
+    start = time.time()
+    Team_A = Team([],'A Team')
+    Team_B = Team([],'B Team')
+    players = []
+    game = True
+    if not ffa:
+        msg = await ctx.channel.send('React to this message to join a team!')
+        await msg.add_reaction('🅰️')
+        await msg.add_reaction('🇧')
+    else:
+        msg = await ctx.channel.send('React to this message to join the practice!')
+        await msg.add_reaction('🅰️')
+    while time.time() - start < 10:#change to 30 #FIX ME
+        try:
+            reaction,user = await client.wait_for('reaction_add', timeout=10,check=check)
+        except asyncio.TimeoutError:
+            None
+        else:
+            if user not in players:
+                players.append(user)
+                if str(reaction.emoji) == '🅰️':
+                    Team_A.players.append(TK_Player(user,Team_A,ctx))
+                else:
+                    Team_B.players.append(TK_Player(user,Team_B,ctx))
+            else:
+                try:
+                    await msg.remove_reaction(str(reaction.emoji),user)
+                except:
+                    await ctx.channel.send('Error. Please enable `manage messages` for the FACE role!')
+                    return
+    if not ffa:
+        A_string = '```A TEAM: '
+        B_string = '```B TEAM: '
+        for x in Team_A.players:
+            A_string = A_string + f'\n{x.author.name}' # append to string with new line
+        for x in Team_B.players:
+            B_string = B_string + f'\n{x.author.name}'
+        practice_size = 2
+        await ctx.channel.send(A_string+'```')
+        await ctx.channel.send(B_string+'```')
+    else:
+        A_string = '```FFA: '
+        for x in Team_A.players:
+            A_string = A_string + f'\n{x.author.name}'
+        practice_size = len(Team_A.players)
+        await ctx.channel.send(A_string+'```')
+    await ctx.channel.send('Ping the moderator within the next 30 seconds.')
+    try:
+        msg = await client.wait_for('message', check=moderator_pred, timeout=30)
+    except asyncio.TimeoutError:
+        await ctx.channel.send('No moderator added. Ending practice.')
+        return
+    else:
+        moderator = msg.mentions[0]
+        await ctx.channel.send(f'{moderator.name} is now the moderator.')
+    instructions = "type **buzz** to buzz! You will be negged if you buzz incorrectly before the end of the question. Moderator: type `m next` to get the next question!"
+    await ctx.channel.send(instructions)
+    game = True
+    tossup_num = 0
+    next_num = 0
+    Team_A.init_directory()
+    Team_B.init_directory()
+    directory = {**Team_A.directory, **Team_B.directory}
+
+    new_numbers = await get_difficulty(difficulty,ctx)
+    if new_numbers == None:
+        return
+    difficulty = new_numbers[:]
+    orig_category = category
+    tossups = await FACE.get_tk_tossup(category,difficulty)
+    if tossups == None:
+        await ctx.channel.send('Please check your category spellings. Do not use spaces within the `{}` when specifying multiple categories.')
+        return
+    elif tossups == 'not enough':
+        await ctx.channel.send('Not enough tossups found!')
+        return
+    elif tossups == 'error':
+        await ctx.channel.send('There was an error...please try again.')
+        return
+    else:
+        no_response = 0
+        pred_to_use = buzz_pred
+    game_tracker = game_info()
+    practice_sim_dict[ctx.channel.id] = [ffa,'sim',moderator,Team_A,Team_B,ctx]
+    while game:
+        if tossup_num > 0:
+            tossups = await FACE.get_tk_tossup(category,difficulty)
+            if tossups == 'error':
+                await ctx.channel.send('There was an error...please try again. Ending the practice.')
+                break
+            elif not tossups:
+                await ctx.channel.send('There was an error...please try again. Ending the practice.')
+                break
+        for i,q in enumerate(tossups):
+            Team_A.init_directory()
+            Team_B.init_directory()
+            directory = {**Team_A.directory, **Team_B.directory}
+            players = [x.author for x in Team_A.players + Team_B.players]
+            tossup_num = tossup_num+1
+            if game == False:
+                break
+            buzzes = []
+            await ctx.channel.send(f'\~\~\~\~\~\~\~\~\~\~\~\~**Tossup {tossup_num}**\~\~\~\~\~\~\~\~\~\~\~\~\~\~\~\~\~\~')
+            # try:
+            question = q[0][0]
+            raw_answer = q[0][2]
+            formatted_answer = q[0][1]
+            tk_difficulty = q[0][3]
+
+            tossup_id = q[0][4]
+            tossup_category = q[0][5]
+            tossup_subcategory = q[0][6]
+            game_tracker.tossups.append((tossup_id,tossup_category,tossup_subcategory,tossup_num))
+            game_tracker.dict_buzzers[tossup_num] = [[],[],[],[]]
+
+            words = q[2]
+            num_words = len(q[2])
+            sentences = q[3]
+            max_words = q[1]
+            edits = math.ceil(num_words/5)
+            edits_left = edits-1
+            # except:
+            #     await ctx.channel.send('There was an error...please try again. Ending the practice.')
+            #     game = False
+            #     break
+            try:
+                mark = question.find(words[4])+len(words[4])
+            except:
+                continue
+            tu_msg = await ctx.channel.send(question[:mark])
+            correct = False
+            while edits_left > 0:
+                if correct == True or len(buzzes) == practice_size:
+                    break
+                to_date = edits - edits_left
+                if 4+(to_date*5) >= len(words):
+                    looking = words[-1]
+                else:
+                    looking = words[4+(to_date*5)]
+                mark = question.find(looking,mark)+len(looking)
+                await tu_msg.edit(content=question[:mark])
+                edits_left -= 1
+                try:
+                    buzz_msg = await client.wait_for('message',check=pred_to_use,timeout=2) #BOOKMARK
+                except asyncio.TimeoutError:
+                    None
+                else:
+                    if buzz_msg.content.casefold() in ['c sim end','m sim end']:
+                        game = False
+                        break
+                    elif buzz_msg.content.casefold() == 'buzz':
+                        buzzer =  directory.get(buzz_msg.author.id)
+                        answering_team = buzzer.team if not ffa else buzzer
+                        buzzes.append(answering_team)
+                        await tu_msg.edit(content=question[:mark]+'**$**')
+                        await ctx.channel.send(f'{buzz_msg.author.mention} buzzed :loudspeaker:')
+                        res = await take_answer(False,buzzer,edits_left,edits)
+                        if res == 'break_loop':
+                            break
+                        buzzer.update(res)
+                        bin = game_tracker.sort_buzzes.get(res[0])
+                        game_tracker.dict_buzzers[tossup_num][bin].append(buzzer.author.name)
+                        if res[0] != 10 and res[0] != 15:
+                            correct = False
+                        else:
+                            correct = True
+                            await tu_msg.edit(content=question[:mark]+'**$**'+question[mark:])
+            if game == False:
+                break
+            start = time.time()
+            while (not correct) and (len(buzzes) < practice_size) and time.time() - start < 10:
+                try:
+                    buzz_msg = await client.wait_for('message',check=pred_to_use,timeout=2)
+                except asyncio.TimeoutError:
+                    None
+                else:
+                    if buzz_msg.content.casefold() in ['c sim end','m sim end']:
+                        game = False
+                        break
+                    if buzz_msg.content.casefold() == 'buzz':
+                        buzzer =  directory.get(buzz_msg.author.id)
+                        answering_team = buzzer.team if not ffa else buzzer
+                        buzzes.append(answering_team)
+                        await tu_msg.edit(content=question[:mark]+'**$**')
+                        await ctx.channel.send(f'{buzz_msg.author.mention} buzzed :loudspeaker:')
+                        res = await take_answer(True,buzzer)
+                        buzzer.update(res)
+                        bin = game_tracker.sort_buzzes.get(res[0])
+                        game_tracker.dict_buzzers[tossup_num][bin].append(buzzer.author.name)
+                        if res[0] != 10 and res[0] != 15:
+                            correct = False
+                        else:
+                            correct = True
+                            await tu_msg.edit(content=question[:mark]+'**$**'+question[mark:])
+            if not correct:
+                await ctx.channel.send(f'This tossup goes dead...:headstone:\nAnswer:{formatted_answer}')
+            try:
+                msg = await client.wait_for('message',check=mod_next,timeout=60)
+            except asyncio.TimeoutError:
+                await ctx.channel.send('Timed out! Ending the practice...')
+                game = False
+                break
+            else:
+                if msg.content in ['c sim end','m sim end']:
+                    game = False
+                    break
+                else:
+                    continue
+    del practice_sim_dict[ctx.channel.id]
+    if tossup_num > 0:
+        full_path = game_tracker.get_spreadsheet()
+        current_time = datetime.datetime.now()
+        with open(full_path, 'rb') as fp:
+            await ctx.channel.send(file=discord.File(fp, f'Practice - {current_time.month}/{current_time.day} {current_time.hour}:{current_time.minute}.csv'))
+        os.remove(full_path)
+        embed = discord.Embed (
+        title='Practice Stats',
+        colour=	0x83e6d0,
+        timestamp=datetime.datetime.now()
+        )
+        Team_A.players.sort(reverse=True,key=lambda x: x.total_points)
+        Team_B.players.sort(reverse=True,key=lambda x: x.total_points)
+        A_str = f'{Team_A.team_points} points\n------------------------'
+        for i,player in enumerate(Team_A.players):
+            stat_line = f'{player.powers}/{player.tens}/{player.negs}: {player.total_points}'
+            A_str += f'\n**{i+1}**. {player.author.name} **---** {stat_line}\nPP20TUH:{20*(player.total_points/tossup_num):.2f}'
+        embed.add_field(name='**Team A**',value=A_str)
+        B_str = f'{Team_B.team_points} points\n------------------------'
+        if not ffa:
+            for i,player in enumerate(Team_B.players):
+                stat_line = f'{player.powers}/{player.tens}/{player.negs}: {player.total_points}'
+                B_str += f'\n**{i+1}**. {player.author.name} **---** {stat_line}\nPP20TUH:{20*(player.total_points/tossup_num):.2f}'
+            embed.add_field(name='**Team B**',value=B_str)
+        embed.set_footer(text='Good game!')
+        await ctx.channel.send(embed=embed)
+@client.command (name='join')
+async def join(ctx):
+    def pred(m):
+        return m.channel == ctx.channel and m.author == ctx.author and m.content.casefold() in ['a','b']
+    info = practice_sim_dict.get(ctx.channel.id)
+    team_dict = {'a':3,'b':4}
+    if info:
+        ffa = info[0]
+        cmd_type = info[1]
+        moderator = info[2]
+        if ffa == True:
+            if cmd_type == 'sim':
+                info[3].players.append(TK_Player(ctx.author,info[3],ctx))
+            elif cmd_type =='practice':
+                info[3].players.append(PR_Player(ctx.author,info[3]))
+        else:
+            await ctx.channel.send('Would you like to join the A team or B team? Respond with `A` or `B`')
+            try:
+                name_team = await client.wait_for('message',check=pred,timeout=15)
+            except asyncio.TimeoutError:
+                await ctx.channel.send('Timed out! Please try again!')
+                return
+            else:
+                name_team = name_team.content.casefold()
+                await ctx.channel.send(f'{moderator.mention} Approval for {ctx.author.name} to join the practice on team {name_team.capitalize()}? `y` or `n`.')
+                def moderator_pred(m):
+                    return m.channel == ctx.channel and m.author == moderator and m.content.casefold() in ['y','n']
+                try:
+                    msg = await client.wait_for('message',check=moderator_pred,timeout=20)
+                except asyncio.TimeoutError:
+                    await ctx.channel.send('Timed out! Please try again!')
+                    return
+                else:
+                    if msg.content.casefold() == 'y':
+                        if cmd_type == 'sim':
+                            info[team_dict.get(name_team)].players.append(TK_Player(ctx.author,info[team_dict.get(name_team)],ctx))
+                        elif cmd_type =='practice':
+                            info[team_dict.get(name_team)].players.append(PR_Player(ctx.author,info[team_dict.get(name_team)]))
+                        await ctx.channel.send('Added!')
+                    else:
+                        await ctx.channel.send('Rejected...')
+    else:
+        await ctx.channel.send('There is no practice or sim going on in this channel!')
+
 @client.command (name='tournament')
 async def tournament(ctx,*tournament):
     try:

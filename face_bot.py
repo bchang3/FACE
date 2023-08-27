@@ -57,25 +57,41 @@ def setup(bot):
     clib=TopGG(bot)
     bot.add_cog(clib)
 
-PREFIX = ['m ','M ']
+PREFIX = ['<@742880812961235105> ','m','M ']
 token='NzQyODgwODEyOTYxMjM1MTA1.XzMjqw.SamNiyezNdCrzRzTQXh2h5SYsfE'
 intents = discord.Intents.default()
 intents.members = True
 client = Bot(command_prefix=PREFIX,intents=intents)
 client.remove_command('help')
 setup(client)
-
-async def add_count(id):
+total_count = 0
+async def add_count(ctx,id):
     global our_guilds
+    global total_count
+    total_count += 1
     count = our_guilds.get(id)
     if count == None:
         return
     else:
         our_guilds[id] = count + 1
+    announce = random.randint(1,100)
+    embed= discord.Embed(
+    title= 'ANNOUNCING FACE 2.0',
+    colour= 0x42f5dd,
+    timestamp=datetime.datetime.now()
+    )
+    embed.add_field(name="Details:", value="Face is getting a rework! [Docs](https://tinyurl.com/223scumn)",inline=False)
+    embed.add_field(name="Survey:",value="Please help us make FACE better by filling out this short [survey](https://forms.gle/4eBBE49QWTzGgq1u7)!",inline=False)
+    embed.add_field(name="Server:",value="Join our support [server](https://discord.gg/YsbhefcXpA) for more information and to be notified of updates!",inline=False)
+    if announce < 15:
+        await ctx.channel.send(embed=embed)
+
 in_pk = []
 close_pk = []
 in_tk = []
 close_tk = []
+in_progress = []
+close_progress = []
 carding = []
 
 cat_embed = discord.Embed(
@@ -107,7 +123,21 @@ for cat in FACE.first_cat_dict.values():
                 all_abbrev.append(abbrev)
         embed.add_field(name=subcat,value=', '.join(all_abbrev))
     subcat_lookup[cat] = embed
-@tasks.loop(seconds=60)
+@tasks.loop(seconds=3600)
+async def check_progress():
+    mydb,mycursor = mysql_connect()
+    mycursor.execute(f'SELECT * FROM progress')
+    table = mycursor.fetchall()
+    for row in table:
+        if row[2] < time.time():
+            user = client.get_user(row[0])
+            category = row[5]
+            if not row[6]:
+                await user.send(f"You are due for a progress check in for **{category.capitalize()}**! Use `m progress {FACE.abbrev_dict.get(category)}`")
+                mycursor.execute(f"UPDATE progress set reminded = {True} WHERE id = {row[0]} AND category = '{category}'")
+    mydb.commit()
+
+@tasks.loop(seconds=300)
 async def update_premium():
     mydb,mycursor = mysql_connect() #user_id,server_id,premium
     mycursor.execute(f'SELECT * FROM premium_servers')
@@ -123,12 +153,15 @@ async def update_premium():
             for i in range(3):
                 mycursor.execute(f'INSERT INTO premium_servers (user_id) VALUES ({id})')
             member = bot_guild.get_member(id)
-            await member.send(
-'''Hi! Thank you for deciding to support us! Below is some important information:
-**---**  To activate your premium membership, use the command **m activate** in your chosen server.
-**---**  It could take up to 10 minutes for your benefits to become available.
-**---**  You can use `m activate` up to three times in three different servers.
-**---** Keep in mind that premium carding features will not be available and server members will not be able to use the bot in their DMs if the server has more than **50 people**. ''')
+            try:
+                await member.send(
+                    '''Hi! Thank you for deciding to support us! Below is some important information:
+                    **---**  To activate your premium membership, use the command **m activate** in your chosen server.
+                    **---**  It could take up to 10 minutes for your benefits to become available.
+                    **---**  You can use `m activate` up to three times in three different servers.
+                    **---** Keep in mind that premium carding features will not be available and server members will not be able to use the bot in their DMs if the server has more than **50 people**. ''')
+            except:
+                print("ERROR SENDING MESSAGE!")
     mydb.commit()
 @tasks.loop(minutes=30)
 async def update_trial():
@@ -143,7 +176,7 @@ def mysql_connect():
     mydb = mysql.connect(
       host="127.0.0.1",
       user="root",
-      password="TheCataclysm91$(*",
+      password="Please!2",
       database="face_log"
     )
     mycursor = mydb.cursor(buffered=True)
@@ -268,6 +301,7 @@ class PR_Player():
         self.tens = 0
         self.negs = 0
         self.team=team
+        self.switch = False
     def update(self,points):
         self.total_points += points
         if points == 15:
@@ -290,7 +324,7 @@ async def end(ctx):
 @client.command (name='help')
 async def help(ctx):
     try:
-        await add_count(ctx.guild.id)
+        await add_count(ctx,ctx.guild.id)
     except:
         None
     embed= discord.Embed(
@@ -325,7 +359,7 @@ async def help(ctx):
 @client.command (name='info',aliases=['details'])
 async def info(ctx):
     try:
-        await add_count(ctx.guild.id)
+        await add_count(ctx,ctx.guild.id)
     except:
         None
     embed = discord.Embed (
@@ -349,6 +383,11 @@ async def leave(ctx,id):
         else:
             await guild.leave()
             await ctx.channel.send(f'Left {guild.name} :slight_frown:')
+@client.command (name='count')
+async def count(ctx):
+    global total_count
+    if is_owner(ctx):
+        await ctx.channel.send(f"Number of commands used since launch is {total_count}")
 @client.command (name='shutdown')
 async def shutdown(ctx):
     if is_owner(ctx):
@@ -432,7 +471,7 @@ async def trial(ctx):
     except:
         await ctx.channel.send('You cannot start a trial in a dm channel!')
         return
-    await add_count(guild_id)
+    await add_count(ctx,guild_id)
     if await premium(ctx.guild.id,ctx) == True:
         await ctx.channel.send('This server already has access to premium features :slight_smile:!')
         return
@@ -483,7 +522,7 @@ async def command_premium(ctx):
 @client.command (name='invite')
 async def invite(ctx):
     try:
-        await add_count(ctx.guild.id)
+        await add_count(ctx,ctx.guild.id)
     except:
         None
     embed= discord.Embed(
@@ -496,7 +535,7 @@ async def invite(ctx):
 @client.command (name='server')
 async def server(ctx):
     try:
-        await add_count(ctx.guild.id)
+        await add_count(ctx,ctx.guild.id)
     except:
         None
     embed= discord.Embed(
@@ -509,7 +548,7 @@ async def server(ctx):
 @client.command (name='instructions')
 async def instructions(ctx,command = None):
     try:
-        await add_count(ctx.guild.id)
+        await add_count(ctx,ctx.guild.id)
     except:
         None
     if command == None:
@@ -525,7 +564,7 @@ async def instructions(ctx,command = None):
 @client.command (name='cats')
 async def cats(ctx):
     try:
-        await add_count(ctx.guild.id)
+        await add_count(ctx,ctx.guild.id)
     except:
         None
     embed = cat_embed
@@ -534,7 +573,7 @@ async def cats(ctx):
 @client.command(name='subcats')
 async def subcats(ctx,cat=None):
     try:
-        await add_count(ctx.guild.id)
+        await add_count(ctx,ctx.guild.id)
     except:
         None
     if cat == None:
@@ -610,19 +649,23 @@ async def tk(ctx,category=None,*difficulty):
         guild_id = ctx.guild.id
     except:
         guild_id = 0
-    await add_count(guild_id)
+    await add_count(ctx,guild_id)
     def close(id):
         global close_tk
         if id not in close_tk:
             return False
         return True
     def buzz_pred(m):
-        return m.author == ctx.author and m.channel == ctx.channel and m.content.casefold() in ['buzz','m skip','m tk end','c tk end']
+        if m.author == ctx.author and m.channel == ctx.channel:
+            for p in ['buzz','skip','tk end','tk end']:
+                if p in m.content.casefold():
+                    return True
+            return False #m.content.casefold() in ['buzz','m skip','m tk end','c tk end']
     async def take_answer(end_question,author,edits_left=0,total_edits=0):
         for player in team.members:
             if author == player.author:
                 ans_player = player
-        cdepth = (total_edits - edits_left)/total_edits * 100 if total_edits > 0 else None
+        cdepth = (total_edits - edits_left)/total_edits * 100 if total_edits > 0 else 0
         cdepth = 100 if cdepth == 0 else cdepth
         try:
             msg = await client.wait_for('message', check=ans_player.pred,timeout=10)
@@ -632,10 +675,10 @@ async def tk(ctx,category=None,*difficulty):
             await ctx.channel.send(f':x: `{add_points}`')
             await ctx.channel.send(formatted_answer)
         else:
-            if msg.content == 'm skip':
+            if 'skip' in msg.content:
                 skip = True
                 return 'break_loop'
-            if msg.content != 'm tk end':
+            if 'tk end' not in msg.content:
                 def find_ans(ans,key):
                     if ans.find(key)==-1:
                         return
@@ -649,14 +692,14 @@ async def tk(ctx,category=None,*difficulty):
                 underlined_portion = underlined_portion.casefold() if underlined_portion else underlined_portion
                 no_response = 0
                 similarity = fuzz.ratio(raw_answer.casefold(),msg.content.casefold())
+                current_tu = tu_msg.content.replace("**$**","")
                 if similarity > 80 or msg.content.casefold() == underlined_portion:
-                    add_points = 15 if ('(*)' not in tu_msg.content and '(*)' in question) else 10
+                    add_points = 15 if ('*' not in current_tu and '*' in question) else 10
                     ans_player.points += add_points
                     await ctx.channel.send(f'`{add_points}`')
                     correct = True
                 else:
                     add_points = -5 if end_question == False else 0
-                    ans_player.points += add_points
                     await ctx.channel.send(f':x: `{add_points}`')
                     ans_player.answerlines_missed.append(raw_answer)
                     correct = False
@@ -670,21 +713,23 @@ async def tk(ctx,category=None,*difficulty):
                     except asyncio.TimeoutError:
                         None
                     else:
-                        if msg.content != 'm tk end':
-                            if msg.content.lower().startswith('n'):
+                        if 'tk end' not in msg.content:
+                            if 'n' in msg.content.lower():
                                 add_points = -5 if end_question == False else 0
                                 await ctx.channel.send(f':x: `{add_points}`')
-                            elif msg.content.lower().startswith('y'):
+                            elif 'y' in msg.content.lower():
                                 correct = True
-                                add_points = 15 if ('(*)' not in tu_msg.content and '(*)' in question) else 10
-                                ans_player.points += add_points
+                                add_points = 15 if ('*' not in current_tu and '*' in question) else 10
                                 ans_player.answerlines_missed.remove(raw_answer)
                                 await ctx.channel.send(f'`{add_points}`')
                             else:
                                 add_points = -5 if end_question == False else 0
                                 await ctx.channel.send('Not a valid response! :x: `-5`')
+                            ans_player.points += add_points
                         else:
                             return 'end'
+                elif not correct:
+                    ans_player.points += -5
             else:
                 return 'end'
         return add_points,ans_player,cdepth
@@ -695,9 +740,17 @@ async def tk(ctx,category=None,*difficulty):
             def team_pred(m):
                 return ((m.author == ctx.author or m.author in self.authors) and m.channel == ctx.channel) and m.channel == ctx.channel and not m.content.startswith('~')
             def team_buzz_pred(m):
-                return ((m.author == ctx.author or m.author in self.authors) and m.channel == ctx.channel) and m.content.casefold() in ['buzz','m skip','m tk end','c tk end','c skip'] and m.channel == ctx.channel
+                if ((m.author == ctx.author or m.author in self.authors) and m.channel == ctx.channel) and m.channel == ctx.channel:
+                    for p in ['buzz','skip','tk end','tk end']:
+                        if p in m.content.casefold():
+                            return True
+                    return False
             def continue_pred(m):
-                return ((m.author == ctx.author or m.author in self.authors) and m.channel == ctx.channel) and m.content.casefold() in ['c next','m next','c tk end','m tk end'] and m.channel == ctx.channel
+                if (m.author in self.authors and m.channel == ctx.channel):
+                    for p in ['buzz','skip','next','tk end']:
+                        if p in m.content.casefold():
+                            return True
+                return False
             self.buzzpred = team_buzz_pred
             self.continuepred = continue_pred
             self.pred = team_pred
@@ -741,7 +794,7 @@ async def tk(ctx,category=None,*difficulty):
             embed.add_field(name='Category',value=f'{category.upper()}')
             embed.add_field(name='Tossups Seen:',value=f'{self.tossups_heard}',inline = True)
             for player in self.members:
-                embed.add_field(name=f'{player.author.name}:',value =f'{player.get_stats()}\n{player.points} total points\nC-Depth: {player.get_cdepth():.2f}',inline=True)
+                embed.add_field(name=f'{player.author.name}:',value =f'{player.get_stats()}\n{player.get_points()} total points\nC-Depth: {player.get_cdepth():.2f}',inline=True)
                 await self.get_answerlines(player)
             if not await premium(guild_id,ctx):
                 embed.add_field(name='Please support us!',value=f'FACE has many more features like Team TKs. Learn about our premium features [here](https://www.patreon.com/facebot)!',inline=False)
@@ -770,9 +823,17 @@ async def tk(ctx,category=None,*difficulty):
             def pred(m):
                 return m.author == self.author and m.channel == ctx.channel
             def buzz_pred(m):
-                return m.author == self.author and m.channel == ctx.channel and m.content.casefold() in ['buzz','m skip','m tk end','c tk end'] and m.channel == ctx.channel
+                if m.author == self.author and m.channel == ctx.channel and m.channel == ctx.channel:
+                    for p in ['buzz','m skip','m tk end','c tk end']:
+                        if p in m.content.casefold():
+                            return True
+                    return False
             def continue_pred(m):
-                return (m.author == self.author and m.channel == ctx.channel) and m.content.casefold() in ['c next','m next','c tk end','m tk end'] and m.channel == ctx.channel
+                if (m.author == self.author and m.channel == ctx.channel) and m.channel == ctx.channel:
+                    for p in ['buzz','skip','next','tk end']:
+                        if p in m.content.casefold():
+                            return True
+                return False
             self.pred = pred
             self.buzzpred = buzz_pred
             self.continuepred = continue_pred
@@ -807,6 +868,8 @@ async def tk(ctx,category=None,*difficulty):
         def get_cdepth(self):
             cdepth = 0 if len(self.cdepths) == 0 else sum(self.cdepths)/len(self.cdepths)
             return cdepth
+        def get_points(self):
+            return self.powers * 15 + self.tens * 10 - self.negs * 5
     global in_tk
     global close_tk
     if ctx.author.id in in_tk: #orig_category != 'ranked'
@@ -814,12 +877,13 @@ async def tk(ctx,category=None,*difficulty):
             if ctx.author.id not in close_tk:
                 close_tk.append(ctx.author.id)
             await ctx.channel.send('Ending the tk...')
-        elif category == 'end--force':
+        elif category == 'end-force':
             if ctx.author.id in close_tk:
                 close_tk.remove(ctx.author.id)
+                await ctx.channel.send('TK force ended.')
             in_tk.remove(ctx.author.id)
         else:
-            await ctx.channel.send('You are already in a tk! Use `m tk end` to end a tk and allow a few seconds for the tk to end. If you are **not** in a tk, use `m tk end--force` after a while.')
+            await ctx.channel.send('You are already in a tk! Use `m tk end` to end a tk and allow a few seconds for the tk to end. If you are **not** in a tk, use `m tk end-force` after a while.')
         return
     # elif orig_category == 'ranked':
     #     if ranked_passed == ranked_questions:
@@ -875,7 +939,7 @@ async def tk(ctx,category=None,*difficulty):
                 in_tk.remove(ctx.author.id)
                 return
             else:
-                if msg.content.startswith('m done'):
+                if 'done' in msg.content:
                     break
                 teammate = None
                 if len(msg.mentions)>0:
@@ -941,6 +1005,7 @@ async def tk(ctx,category=None,*difficulty):
             for i,q in enumerate(tossups):
                 try:
                     skip = False
+                    speed = 5 #controls speed of tk
                     question = q[0][0]
                     raw_answer = q[0][2]
                     formatted_answer = q[0][1]
@@ -949,7 +1014,7 @@ async def tk(ctx,category=None,*difficulty):
                     num_words = len(q[2])
                     sentences = q[3]
                     max_words = q[1]
-                    edits = math.ceil(num_words/5)
+                    edits = math.ceil(num_words/speed)
                     edits_left = edits-1
                 except:
                     await ctx.channel.send('There was an error...please try again. Ending the tk.')
@@ -959,10 +1024,10 @@ async def tk(ctx,category=None,*difficulty):
                     in_tk.remove(id)
                     return
                 try:
-                    mark = question.find(words[4])+len(words[4])
+                    start = " ".join(words[:speed])
                 except:
                     continue
-                tu_msg = await ctx.channel.send(question[:mark])
+                tu_msg = await ctx.channel.send(start)
                 correct = False
                 while edits_left > 0:
                     if id in close_tk:
@@ -972,25 +1037,25 @@ async def tk(ctx,category=None,*difficulty):
                         in_tk.remove(id)
                         return
                     to_date = edits - edits_left
-                    if 4+(to_date*5) >= len(words):
-                        looking = words[-1]
+                    if speed + (to_date*speed) >= len(words):
+                        updated = " ".join(words[:])
+                        toAdd = ""
                     else:
-                        looking = words[4+(to_date*5)]
-                    # await ctx.channel.send(f'looking for {looking}, mark is {mark}')
-                    mark = question.find(looking,mark)+len(looking)
-                    await tu_msg.edit(content=question[:mark])
+                        updated = " ".join(words[:speed+(to_date*speed)])
+                        toAdd = " ".join(words[speed+(to_date*speed):])
+                    await tu_msg.edit(content=updated)
                     edits_left -= 1
                     try:
-                        buzz_msg = await client.wait_for('message',check=pred_to_use,timeout=1.4)
+                        buzz_msg = await client.wait_for('message',check=pred_to_use,timeout=0.9)
                     except asyncio.TimeoutError:
                         None
                     else:
-                        if buzz_msg.content.casefold() in ['c skip','m skip']:
+                        if 'skip' in buzz_msg.content.casefold():
                             await ctx.channel.send('Skipped :dizzy:')
                             skip = True
                             break
-                        elif buzz_msg.content.casefold() == 'buzz':
-                            await tu_msg.edit(content=question[:mark]+'**$**')
+                        elif 'buzz' in buzz_msg.content.casefold():
+                            await tu_msg.edit(content=updated+'**$**')
                             await ctx.channel.send(f'{buzz_msg.author.mention} buzzed :loudspeaker:')
                             res = await take_answer(False,buzz_msg.author,edits_left,edits)
                             if res == 'break_loop':
@@ -1008,7 +1073,7 @@ async def tk(ctx,category=None,*difficulty):
                             if id not in close_tk and skip == False:
                                 player_up.update(res,tk_difficulty)
                                 await asyncio.sleep(2)
-                            await tu_msg.edit(content=question[:mark]+'**$**'+question[mark:])
+                            await tu_msg.edit(content=updated+'**$**'+toAdd)
                             correct = True
                             break
                 if not correct and not skip:
@@ -1017,15 +1082,15 @@ async def tk(ctx,category=None,*difficulty):
                     except asyncio.TimeoutError:
                         await ctx.channel.send(f'This tossup goes dead...:headstone:\nAnswer:{formatted_answer}')
                     else:
-                        if buzz_msg.content.casefold() not in ['c skip','m skip']:
+                        if not ('skip' in buzz_msg.content.casefold()):
                             if id in close_tk:
                                 embed = await team.get_embed(category,is_team,guild_id)
                                 await ctx.channel.send(embed=embed)
                                 close_tk.remove(id)
                                 in_tk.remove(id)
                                 return
-                            if buzz_msg.content.casefold() == 'buzz':
-                                await tu_msg.edit(content=question[:mark]+'**$**')
+                            if 'buzz' in buzz_msg.content.casefold():
+                                await tu_msg.edit(content=updated+'**$**')
                                 await ctx.channel.send(f'{buzz_msg.author.mention} buzzed :loudspeaker:')
                                 res = await take_answer(True,buzz_msg.author)
                                 skip = True if res == 'skip' else False
@@ -1034,7 +1099,7 @@ async def tk(ctx,category=None,*difficulty):
                                 if id not in close_tk and skip == False:
                                     player_up.update(res,tk_difficulty)
                                     await asyncio.sleep(2)
-                                await tu_msg.edit(content=question[:mark]+'**$**'+question[mark:])
+                                await tu_msg.edit(content=updated+'**$**'+toAdd)
                         else:
                             await ctx.channel.send('Skipped :dizzy:')
                 if skip == True:
@@ -1056,6 +1121,7 @@ async def tk(ctx,category=None,*difficulty):
     in_tk.remove(id)
 @client.command (name='pk')
 async def pk(ctx,category=None,*difficulty):
+    mydb, mycursor = mysql_connect()
     def pred(m):
         return m.author == ctx.author and m.channel == ctx.channel and not m.content.startswith('~')
     # hour = datetime.datetime.now().hour
@@ -1077,7 +1143,7 @@ async def pk(ctx,category=None,*difficulty):
         guild_id = ctx.guild.id
     except:
         guild_id = 0
-    await add_count(guild_id)
+    await add_count(ctx,guild_id)
     def close(id):
         global close_pk
         if id not in close_pk:
@@ -1208,12 +1274,13 @@ async def pk(ctx,category=None,*difficulty):
             if ctx.author.id not in close_pk:
                 close_pk.append(ctx.author.id)
             await ctx.channel.send('Ending the pk...')
-        elif category == 'end--force':
+        elif category == 'end-force':
             if ctx.author.id in close_pk:
                 close_pk.remove(ctx.author.id)
+                await ctx.channel.send("PK force ended.")
             in_pk.remove(ctx.author.id)
         else:
-            await ctx.channel.send('You are already in a pk! Use `m pk end` to end a pk and allow a few seconds for the pk to end. If you are **not** in a pk, use `m pk end--force` after a while.')
+            await ctx.channel.send('You are already in a pk! Use `m pk end` to end a pk and allow a few seconds for the pk to end. If you are **not** in a pk, use `m pk end-force` after a while.')
         return
     # elif orig_category == 'ranked':
     #     if ranked_passed == ranked_questions:
@@ -1224,9 +1291,7 @@ async def pk(ctx,category=None,*difficulty):
         return
     in_pk.append(ctx.author.id)
     if category == None:
-        await ctx.channel.send('You used the wrong format! Use the command `m pk *category* *[difficulty]*`, e.g. `m pk sci [3-7]` or `m pk sci:bio [1-9]`')
-        in_pk.remove(ctx.author.id)
-        return
+        category = 'all'
     difficulty = list(difficulty)
     brackets = False
     numbers = False
@@ -1243,7 +1308,6 @@ async def pk(ctx,category=None,*difficulty):
     if 'timed' in difficulty:
         difficulty.remove('timed')
         timed = True
-
     else:
         timed = False
     is_team = False
@@ -1307,29 +1371,6 @@ async def pk(ctx,category=None,*difficulty):
             if opponent:
                 if 'comp' in difficulty:
                     comp_pk = True
-                def pred_B(m):
-                    return m.author == opponent and m.channel == ctx.channel and not m.content.startswith('~')
-                team.append(Player(opponent,pred_B))
-                await ctx.channel.send('Opponent added :ballot_box_with_check:')
-            else:
-                await ctx.channel.send('That is not a valid Discord user!')
-                in_pk.remove(ctx.author.id)
-                return
-    elif category == 'ranked':
-        # difficulty.remove('comp')
-        await ctx.channel.send('Ping your opponent to add them, e.g.`@my_opponent`.')
-        try:
-            msg = await client.wait_for('message', check=pred,timeout=10)
-        except asyncio.TimeoutError:
-            await ctx.channel.send('You did not respond in time!')
-            in_pk.remove(ctx.author.id)
-            return
-        else:
-            if len(msg.mentions)>0:
-                opponent = msg.mentions[0]
-            if opponent:
-                # if 'ranked' == category:
-                #     ranked_pk = True
                 def pred_B(m):
                     return m.author == opponent and m.channel == ctx.channel and not m.content.startswith('~')
                 team.append(Player(opponent,pred_B))
@@ -1428,7 +1469,7 @@ async def pk(ctx,category=None,*difficulty):
                             break
                         no_response += 1
                     else:
-                        if msg.content == 'm skip':
+                        if msg.content.startswith('m skip'):
                             skip = True
                             no_response = 0
                             break
@@ -1490,9 +1531,12 @@ async def pk(ctx,category=None,*difficulty):
         if id in in_pk:
             in_pk.remove(id)
 @client.command (name='practice')
-async def practice(ctx,extra=None):
+async def practice(ctx,*extra):
+    if not ctx.channel.guild.me.guild_permissions.manage_messages:
+        await ctx.channel.send('Error: Missing permissions. Please enable `manage messages` for the FACE role in server settings!')
+        return
     try:
-        await add_count(ctx.guild.id)
+        await add_count(ctx,ctx.guild.id)
     except:
         None
     if extra == 'end':
@@ -1500,46 +1544,11 @@ async def practice(ctx,extra=None):
     if practice_sim_dict.get(ctx.channel.id):
         await ctx.channel.send('There is already a practice in this channel!')
         return
-    ffa = True if extra == 'ffa' else False
+    ffa = True if 'ffa' in extra else False
+    bonuses = True if 'bonuses' in extra else False
+    await ctx.channel.send(f"Free-for-all: {ffa}\nBonuses: {bonuses}")
     def pred(m):
         return m.author == ctx.author and m.channel == ctx.channel
-    def end_pred(m):
-        return m.content == 'm practice end' and (m.author== moderator or m.author == ctx.author)
-    def check(reaction, user):
-        nonlocal msg
-        return (str(reaction.emoji) == '🇧' or str(reaction.emoji) == '🅰️') and user != client.user and reaction.message.id == msg.id
-    def moderator_pred(m): #used to appoint a moderator
-        return m.author == ctx.author and m.channel == ctx.channel and len(m.mentions) > 0
-    def buzz_pred(m):
-        nonlocal directory
-        nonlocal buzzes
-        nonlocal ffa
-        if not ffa:
-            return (((m.author in players and m.content.lower().startswith('buzz')) and directory.get(m.author.id).team not in buzzes) or (m.author == moderator and m.content == 'm next') or end_pred(m)) and m.channel == ctx.channel
-        else:
-            return (((m.author in players and m.content.lower().startswith('buzz')) and directory.get(m.author.id) not in buzzes) or (m.author == moderator and m.content == 'm next') or end_pred(m)) and m.channel == ctx.channel
-    def grade_pred(m): # used to grade a tossup answer
-        return ((m.author == moderator) and m.content in (ten+power+neg+zero)) or end_pred(m)
-    def mod_next(m): # used for advancing tossups after bonuses
-        return ((m.author == moderator) and m.content.startswith('m next')) or end_pred(m)
-    def grade_bonus(m):
-        return ((m.author == moderator) and (m.content.isdigit() and int(m.content) in [0,10,20,30])) or end_pred(m)
-    await ctx.channel.send('Do you want to practice with bonuses? (Y/N)')
-    try:
-        msg = await client.wait_for('message',check=pred,timeout=15)
-    except asyncio.TimeoutError:
-        await ctx.channel.send('Practice timed out...')
-        return
-    else:
-        if msg.content.casefold().startswith('y'):
-            await ctx.channel.send('Bonuses enabled :white_check_mark:.')
-            bonuses = True
-        elif msg.content.casefold().startswith('n'):
-            await ctx.channel.send('Bonuses disabled :x:.')
-            bonuses = False
-        else:
-            await ctx.channel.send('Not a valid response. Ending practice...')
-            return
     ten = ['ten','+','10']
     power = ['power','*','15']
     neg = ['neg','-','-5']
@@ -1549,85 +1558,158 @@ async def practice(ctx,extra=None):
             self.players = players
             self.name = name
             self.team_points = 0
+            self.tossup_num = 0
         def init_directory(self):
             self.directory = dict()
             for player in self.players:
                 self.directory[player.author.id] = player
-    # class Player():
-    #     def __init__(self,author,team):
-    #         self.author = author
-    #         self.total_points = 0
-    #         self.tossups_heard = 0
-    #         self.powers = 0
-    #         self.tens = 0
-    #         self.negs = 0
-    #         self.team=team
-    #     def update(self,points):
-    #         self.total_points += points
-    #         if points == 15:
-    #             self.team.team_points += 15
-    #             self.powers += 1
-    #         elif points == 10:
-    #             self.team.team_points += 10
-    #             self.tens += 1
-    #         elif points == -5:
-    #             self.team.team_points -= 5
-    #             self.negs += 1
     start = time.time()
     Team_A = Team([],'A Team')
     Team_B = Team([],'B Team')
     players = []
     game = True
+
+    moderator = ctx.author
+    channel = ctx.author.voice.channel if ctx.author.voice else False
+    if not channel:
+        await ctx.channel.send("You are not in a voice channel :slight_frown:! Please join a vc and try again.")
+        return
+    try:
+        connection = await channel.connect()
+    except:
+        None
+    Team_A.init_directory()
+    Team_B.init_directory()
+    directory = {**Team_A.directory, **Team_B.directory}
+    practice_sim_dict[ctx.channel.id] = [ffa,'practice',moderator,Team_A,Team_B,ctx]
+    p_helper = asyncio.ensure_future(practice_helper(ctx, ctx.channel.id, channel.id))
+    practice_env = asyncio.ensure_future(practicer(ctx, moderator, Team_A, Team_B, ffa, bonuses, connection))
+    await asyncio.gather(*[p_helper, practice_env])
+
+async def practice_helper(ctx, channel_id, vc_id):
+    def check(reaction, user):
+        nonlocal msg
+        return msg.id == reaction.message.id and (str(reaction.emoji) == '🇧' or str(reaction.emoji) == '🅰️') and user != client.user
+    def ffa_check(reaction, user):
+        nonlocal msg
+        return  msg.id == reaction.message.id and (str(reaction.emoji) == '🏵️') and user != client.user
+    info = practice_sim_dict.get(channel_id)
+    team_dict = {'a':3,'b':4}
+    if info:
+        ffa = info[0]
+        moderator = info[2]
     if not ffa:
-        msg = await ctx.channel.send('React to this message to join a team!')
+        msg = await ctx.channel.send('**React to this message with the emojis below to join a team!**')
+        try:
+            await msg.pin()
+        except:
+            None
         await msg.add_reaction('🅰️')
         await msg.add_reaction('🇧')
-    else:
-        msg = await ctx.channel.send('React to this message to join the practice!')
-        await msg.add_reaction('🅰️')
-    while time.time() - start < 30:#change to 30
-        try:
-            reaction,user = await client.wait_for('reaction_add', timeout=10,check=check)
-        except asyncio.TimeoutError:
-            None
-        else:
-            if user not in players:
-                players.append(user)
-                if str(reaction.emoji) == '🅰️':
-                    Team_A.players.append(PR_Player(user,Team_A))
-                else:
-                    Team_B.players.append(PR_Player(user,Team_B))
+        while practice_sim_dict.get(channel_id):
+            try:
+                reaction,user = await client.wait_for('reaction_add', timeout=45, check=check) #ADD CHECK
+            except asyncio.TimeoutError:
+                continue
             else:
-                try:
-                    await msg.remove_reaction(str(reaction.emoji),user)
-                except:
-                    await ctx.channel.send('Error. Please enable `manage messages` for the FACE role!')
-                    return
-    if not ffa:
-        A_string = '```A TEAM: '
-        B_string = '```B TEAM: '
-        for x in Team_A.players:
-            A_string = A_string + f'\n{x.author.name}' # append to string with new line
-        for x in Team_B.players:
-            B_string = B_string + f'\n{x.author.name}'
-        practice_size = 2
-        await ctx.channel.send(A_string+'```')
-        await ctx.channel.send(B_string+'```')
+                vc = client.get_channel(vc_id)
+                if user.id not in [x.id for x in vc.members]:
+                    await ctx.channel.send(f"{user.mention}, join the VC to join a team!")
+                    continue
+                switch = False
+                if str(reaction.emoji) == '🅰️':
+                    idx = None
+                    for i,player in enumerate(info[team_dict.get('b')].players):
+                        if player.author.id == user.id:
+                            idx = i
+                            switch = True
+                            emoji = '🇧'
+                            break
+                    if switch:
+                        player = info[team_dict.get('b')].players.pop(idx)
+                        player.switch = True
+                        player.team = info[team_dict.get('a')]
+                        info[team_dict.get('a')].players.append(player)
+                    else:
+                        info[team_dict.get('a')].players.append(PR_Player(user,info[team_dict.get('a')]))
+                else:
+                    idx = None
+                    for i,player in enumerate(info[team_dict.get('a')].players):
+                        if player.author.id == user.id:
+                            idx = i
+                            switch = True
+                            emoji = '🅰️'
+                            break
+                    if switch:
+                        player = info[team_dict.get('a')].players.pop(idx)
+                        player.switch = True
+                        player.team = info[team_dict.get('b')]
+                        info[team_dict.get('b')].players.append(player)
+                    else:
+                        info[team_dict.get('b')].players.append(PR_Player(user,info[team_dict.get('b')]))
+                if switch:
+                    await msg.remove_reaction(emoji,user)
+            await ctx.channel.send(f'{user.mention } joined! :white_check_mark:')
     else:
-        A_string = '```FFA: '
-        for x in Team_A.players:
-            A_string = A_string + f'\n{x.author.name}'
-        practice_size = len(Team_A.players)
-        await ctx.channel.send(A_string+'```')
-    await ctx.channel.send('Ping the moderator within the next 30 seconds.')
+        msg = await ctx.channel.send('**Click on the emoji below to join the practice!**')
+        await msg.add_reaction('🏵️')
+        try:
+            await msg.pin()
+        except:
+            None
+        while practice_sim_dict.get(channel_id):
+            try:
+                reaction,user = await client.wait_for('reaction_add', timeout=45, check=ffa_check) #ADD CHECK
+            except asyncio.TimeoutError:
+                continue
+            else:
+                vc = client.get_channel(vc_id)
+                if user.id not in [x.id for x in vc.members]:
+                    await ctx.channel.send(f"{user.mention}, join the VC to join a team!")
+                    continue
+                if str(reaction.emoji) == '🏵️':
+                    already_in = False
+                    for i,player in enumerate(info[team_dict.get('a')].players):
+                        if player.author.id == user.id:
+                            already_in = True
+                            break
+                    if already_in:
+                        continue
+                    else:
+                        info[3].players.append(PR_Player(user,info[3]))
+                        print(info[3].players)
+                        await ctx.channel.send(f'{user.mention} joined! :white_check_mark:')
     try:
-        msg = await client.wait_for('message', check=moderator_pred, timeout=30)
-    except asyncio.TimeoutError:
-        await ctx.channel.send('No moderator added. Ending practice.')
-        return
-    else:
-        moderator = msg.mentions[0]
-        await ctx.channel.send(f'{moderator.name} is now the moderator.')
+        await msg.unpin()
+    except:
+        None
+async def practicer(ctx, moderator, Team_A, Team_B, ffa, bonuses, connection):
+    ten = ['ten','+','10']
+    power = ['power','*','15']
+    neg = ['neg','-','-5']
+    zero = ['zero','0']
+    def pred(m):
+        return m.author == ctx.author and m.channel == ctx.channel
+    def end_pred(m):
+        return m.content == 'm practice end' and (m.author== moderator or m.author == ctx.author)
+    def moderator_pred(m): #used to appoint a moderator
+        return m.author == ctx.author and m.channel == ctx.channel and len(m.mentions) > 0
+    def buzz_pred(m):
+        nonlocal directory, buzzes, ffa, players, Team_A, Team_B
+        Team_A.init_directory()
+        Team_B.init_directory()
+        directory = {**Team_A.directory, **Team_B.directory}
+        players = [x.author for x in Team_A.players + Team_B.players]
+        if not ffa:
+            return (((m.author in players and m.content.lower().startswith('buzz')) and directory.get(m.author.id).team not in buzzes) or (m.author == moderator and m.content.startswith('m next')) or end_pred(m)) and m.channel == ctx.channel
+        else:
+            return (((m.author in players and m.content.lower().startswith('buzz')) and directory.get(m.author.id) not in buzzes) or (m.author == moderator and m.content.startswith('m next')) or end_pred(m)) and m.channel == ctx.channel
+    def grade_pred(m): # used to grade a tossup answer
+        return ((m.author == moderator) and m.content in (ten+power+neg+zero)) or end_pred(m)
+    def mod_next(m): # used for advancing tossups after bonuses
+        return ((m.author == moderator) and m.content.startswith('m next')) or end_pred(m)
+    def grade_bonus(m):
+        return ((m.author == moderator) and (m.content.isdigit() and int(m.content) in [0,10,20,30])) or end_pred(m)
     instructions = f'''
 {moderator.mention} -- **MODERATOR INSTRUCTIONS**
 **---** For powers, type one of the following: `*`,`power`,`15`
@@ -1642,16 +1724,13 @@ async def practice(ctx,extra=None):
     game = True
     tossup_num = 0
     next_num = 0
-    Team_A.init_directory()
-    Team_B.init_directory()
-    directory = {**Team_A.directory, **Team_B.directory}
-    practice_sim_dict[ctx.channel.id] = [ffa,'practice',moderator,Team_A,Team_B,ctx]
     while game:
+        practice_size = 2 if not ffa else len(Team_A.players)
         Team_A.init_directory()
         Team_B.init_directory()
         directory = {**Team_A.directory, **Team_B.directory}
         players = [x.author for x in Team_A.players + Team_B.players]
-        #await ctx.channel.send(f'{tossup_num}, {next_num}')
+        Team_A.tossup_num = tossup_num + 1
         if tossup_num >= next_num:
             buzzes = []
             await ctx.channel.send(f'\~\~\~\~\~\~\~\~\~\~\~\~**Tossup {tossup_num+1}**\~\~\~\~\~\~\~\~\~\~\~\~\~\~\~\~\~\~')
@@ -1670,12 +1749,13 @@ async def practice(ctx,extra=None):
             if msg.content == 'm practice end':
                 await ctx.channel.send('**Practice ended.**')
                 break
-            if msg.content == 'm next':
+            if msg.content.startswith('m next'):
                 tossup_num += 1
                 continue
-            await ctx.channel.send(f'{moderator.mention} `buzz from {msg.author.name}`')
             buzzer =  directory.get(msg.author.id)
             answering_team = buzzer.team if not ffa else buzzer
+            to_send = f'{moderator.mention} `buzz from {msg.author.name}`' if ffa else f'{moderator.mention} `buzz from {msg.author.name}`, Team {buzzer.team.name}'
+            await ctx.channel.send(to_send)
             try:
                 grade = await client.wait_for('message',check=grade_pred,timeout=300)
             except asyncio.TimeoutError:
@@ -1752,6 +1832,7 @@ async def practice(ctx,extra=None):
                 elif len(buzzes) == practice_size and correct == False: #change to practice_size
                     tossup_num += 1
     del practice_sim_dict[ctx.channel.id]
+    tossup_num += 1
     embed = discord.Embed (
     title='Practice Stats',
     colour=	0x83e6d0,
@@ -1761,17 +1842,71 @@ async def practice(ctx,extra=None):
     Team_B.players.sort(reverse=True,key=lambda x: x.total_points)
     A_str = f'{Team_A.team_points} points\n------------------------'
     for i,player in enumerate(Team_A.players):
+        listed_name = f'{player.author.name} (switched teams)' if player.switch else player.author.name
         stat_line = f'{player.powers}/{player.tens}/{player.negs}: {player.total_points}'
-        A_str += f'\n**{i+1}**. {player.author.name} **---** {stat_line}\nPP20TUH:{20*(player.total_points/tossup_num):.2f}'
+        A_str += f'\n**{i+1}**. {listed_name} **---** {stat_line}\nPP20TUH:{20*(player.total_points/tossup_num):.2f}'
+
     embed.add_field(name='**Team A**',value=A_str)
     B_str = f'{Team_B.team_points} points\n------------------------'
     if not ffa:
         for i,player in enumerate(Team_B.players):
+            listed_name = f'{player.author.name} (switched teams)' if player.switch else player.author.name
             stat_line = f'{player.powers}/{player.tens}/{player.negs}: {player.total_points}'
-            B_str += f'\n**{i+1}**. {player.author.name} **---** {stat_line}\nPP20TUH:{20*(player.total_points/tossup_num):.2f}'
+            B_str += f'\n**{i+1}**. {listed_name} **---** {stat_line}\nPP20TUH:{20*(player.total_points/tossup_num):.2f}'
         embed.add_field(name='**Team B**',value=B_str)
     embed.set_footer(text='Good game!')
     await ctx.channel.send(embed=embed)
+    await connection.disconnect()
+@client.command (name = 'score')
+async def score(ctx):
+    info = practice_sim_dict.get(ctx.channel.id)
+    if info:
+        ffa, mode, moderator, Team_A, Team_B, ctx = info
+        tossup_num = Team_A.tossup_num
+        if mode == 'practice':
+            embed = discord.Embed (
+            title='Practice Stats',
+            colour=	0x83e6d0,
+            timestamp=datetime.datetime.now()
+            )
+            Team_A.players.sort(reverse=True,key=lambda x: x.total_points)
+            Team_B.players.sort(reverse=True,key=lambda x: x.total_points)
+            A_str = f'{Team_A.team_points} points\n------------------------'
+            for i,player in enumerate(Team_A.players):
+                listed_name = f'{player.author.name} (switched teams)' if player.switch else player.author.name
+                stat_line = f'{player.powers}/{player.tens}/{player.negs}: {player.total_points}'
+                A_str += f'\n**{i+1}**. {listed_name} **---** {stat_line}\nPP20TUH:{20*(player.total_points/tossup_num):.2f}'
+
+            embed.add_field(name='**Team A**',value=A_str)
+            B_str = f'{Team_B.team_points} points\n------------------------'
+            if not ffa:
+                for i,player in enumerate(Team_B.players):
+                    listed_name = f'{player.author.name} (switched teams)' if player.switch else player.author.name
+                    stat_line = f'{player.powers}/{player.tens}/{player.negs}: {player.total_points}'
+                    B_str += f'\n**{i+1}**. {listed_name} **---** {stat_line}\nPP20TUH:{20*(player.total_points/tossup_num):.2f}'
+                embed.add_field(name='**Team B**',value=B_str)
+            await ctx.channel.send(embed=embed)
+        else:
+            embed = discord.Embed (
+            title='Practice Stats',
+            colour=	0x83e6d0,
+            timestamp=datetime.datetime.now()
+            )
+            Team_A.players.sort(reverse=True,key=lambda x: x.total_points)
+            Team_B.players.sort(reverse=True,key=lambda x: x.total_points)
+            A_str = f'{Team_A.team_points} points\n{Team_A.get_ppg(tossup_num)} PP20TUH\n{Team_A.get_ppb(tossup_num)} PPB\n------------------------'
+            for i,player in enumerate(Team_A.players):
+                stat_line = f'{player.powers}/{player.tens}/{player.negs}: {player.total_points}'
+                A_str += f'\n**{i+1}**. {player.author.name} **---** {stat_line}\nPP20TUH:{20*(player.total_points/tossup_num):.2f}'
+            embed.add_field(name='**Team A**',value=A_str)
+            B_str = f'{Team_B.team_points} points\n{Team_B.get_ppg(tossup_num)} PP20TUH\n{Team_B.get_ppb(tossup_num)} PPB\n------------------------'
+            if not ffa:
+                for i,player in enumerate(Team_B.players):
+                    stat_line = f'{player.powers}/{player.tens}/{player.negs}: {player.total_points}'
+                    B_str += f'\n**{i+1}**. {player.author.name} **---** {stat_line}\nPP20TUH:{20*(player.total_points/tossup_num):.2f}'
+                embed.add_field(name='**Team B**',value=B_str)
+            await ctx.channel.send(embed=embed)
+
 @client.command (name='sim')
 async def sim(ctx,category=None,*difficulty):
     guild_id = ctx.guild.id
@@ -1779,7 +1914,7 @@ async def sim(ctx,category=None,*difficulty):
         await ctx.channel.send('You used the wrong format! Use the command `m sim *category* *[difficulty]*`, e.g. `m sim sci [3-7]` or `m sim sci:bio [1-9]` or `m sim all [3]`')
         return
     try:
-        await add_count(ctx.guild.id)
+        await add_count(ctx,ctx.guild.id)
     except:
         None
     if category == 'end':
@@ -1824,15 +1959,15 @@ async def sim(ctx,category=None,*difficulty):
         nonlocal buzzes
         nonlocal ffa
         if not ffa:
-            return (((m.author in players and m.content.lower().startswith('buzz')) and directory.get(m.author.id).team not in buzzes) or (m.author == moderator and m.content == 'm next') or end_pred(m)) and m.channel == ctx.channel
+            return (((m.author in players and m.content.lower().startswith('buzz')) and directory.get(m.author.id).team not in buzzes) or (m.author == moderator and m.content.startswith('m next')) or end_pred(m)) and m.channel == ctx.channel
         else:
-            return (((m.author in players and m.content.lower().startswith('buzz')) and directory.get(m.author.id) not in buzzes) or (m.author == moderator and m.content == 'm next') or end_pred(m)) and m.channel == ctx.channel
+            return (((m.author in players and m.content.lower().startswith('buzz')) and directory.get(m.author.id) not in buzzes) or (m.author == moderator and m.content.startswith('m next')) or end_pred(m)) and m.channel == ctx.channel
     def grade_pred(m): # used to grade a tossup answer
         return (((m.author == moderator) and m.content.casefold() in ['y','n']) or end_pred(m)) and m.channel == ctx.channel
     def mod_next(m): # used for advancing tossups after bonuses
         return (((m.author == moderator) and m.content.startswith('m next')) or end_pred(m)) and m.channel == ctx.channel
     async def take_answer(end_question,ans_player,edits_left=0,total_edits=0):
-        cdepth = (total_edits - edits_left)/total_edits * 100 if total_edits > 0 else None
+        cdepth = (total_edits - edits_left)/total_edits * 100 if total_edits > 0 else 0
         cdepth = 100 if cdepth == 0 else cdepth
         try:
             msg = await client.wait_for('message', check=ans_player.pred,timeout=10)
@@ -1854,8 +1989,9 @@ async def sim(ctx,category=None,*difficulty):
                 underlined_portion = underlined_portion.casefold() if underlined_portion else underlined_portion
                 no_response = 0
                 similarity = fuzz.ratio(raw_answer.casefold(),msg.content.casefold())
+                current_tu = tu_msg.content.replace("**$**","")
                 if similarity > 80 or msg.content.casefold() == underlined_portion:
-                    add_points = 15 if ('(*)' not in tu_msg.content and '(*)' in question) else 10
+                    add_points = 15 if ('*' not in current_tu and '*' in question) else 10
                     await ctx.channel.send(f'`{add_points}`')
                     await ctx.channel.send(f'ANSWER: {formatted_answer}')
                     correct = True
@@ -1867,6 +2003,7 @@ async def sim(ctx,category=None,*difficulty):
                 given_abbrev = msg.content.casefold().strip()
                 real_abbrev = ''.join([x[0] for x in raw_answer.casefold().split()])
                 if (10 <= similarity <= 75 or (msg.content.casefold() in formatted_answer.casefold()) or has_num(msg.content.casefold()) or has_num(raw_answer.casefold()) or given_abbrev == real_abbrev) and correct == False:   #;  where should this go follow m
+                    await ctx.channel.send("Prompt: (check dms)")
                     await ans_player.author.send(f'ANSWER: {formatted_answer}')
                     await ans_player.author.send(f'Is the answer correct? Respond with `y` or `n`')
                     try:
@@ -1880,7 +2017,7 @@ async def sim(ctx,category=None,*difficulty):
                                 await ctx.channel.send(f':x: `{add_points}`')
                             elif msg.content.lower().startswith('y'):
                                 correct = True
-                                add_points = 15 if ('(*)' not in tu_msg.content and '(*)' in question) else 10
+                                add_points = 15 if ('*' not in current_tu and '*' in question) else 10
                                 await ctx.channel.send(f'ANSWER: {formatted_answer}')
                                 ans_player.answerlines_missed.remove(raw_answer)
                                 await ctx.channel.send(f'`{add_points}`')
@@ -1985,7 +2122,7 @@ async def sim(ctx,category=None,*difficulty):
     else:
         msg = await ctx.channel.send('React to this message to join the practice!')
         await msg.add_reaction('🅰️')
-    while time.time() - start < 30:#change to 30 #FIX ME
+    while time.time() - start < 30:
         try:
             reaction,user = await client.wait_for('reaction_add', timeout=10,check=check)
         except asyncio.TimeoutError:
@@ -2086,62 +2223,67 @@ async def sim(ctx,category=None,*difficulty):
                 break
             buzzes = []
             await ctx.channel.send(f'\~\~\~\~\~\~\~\~\~\~\~\~**Tossup {tossup_num}**\~\~\~\~\~\~\~\~\~\~\~\~\~\~\~\~\~\~')
-            # try:
-            question = q[0][0]
-            raw_answer = q[0][2]
-            formatted_answer = q[0][1]
-            tk_difficulty = q[0][3]
-
-            tossup_id = q[0][4]
-            tossup_category = q[0][5]
-            tossup_subcategory = q[0][6]
-            game_tracker.tossups.append((tossup_id,tossup_category,tossup_subcategory,tossup_num))
-            game_tracker.dict_buzzers[tossup_num] = [[],[],[],[]]
-
-            words = q[2]
-            num_words = len(q[2])
-            sentences = q[3]
-            max_words = q[1]
-            edits = math.ceil(num_words/5)
-            edits_left = edits-1
-
-            points = 0
-            possible_points = 0
-            tournament = list_bonuses[i][0][1]
-            leadin = list_bonuses[i][0][0]
-            color = list_bonuses[i][0][3]
-            pk_difficulty = list_bonuses[i][0][2]
-
             try:
-                mark = question.find(words[4])+len(words[4])
+                speed = 5
+                question = q[0][0]
+                raw_answer = q[0][2]
+                formatted_answer = q[0][1]
+                tk_difficulty = q[0][3]
+
+                tossup_id = q[0][4]
+                tossup_category = q[0][5]
+                tossup_subcategory = q[0][6]
+                game_tracker.tossups.append((tossup_id,tossup_category,tossup_subcategory,tossup_num))
+                game_tracker.dict_buzzers[tossup_num] = [[],[],[],[]]
+
+                words = q[2]
+                num_words = len(q[2])
+                sentences = q[3]
+                max_words = q[1]
+                edits = math.ceil(num_words/5)
+                edits_left = edits-1
+
+                points = 0
+                possible_points = 0
+                tournament = list_bonuses[i][0][1]
+                leadin = list_bonuses[i][0][0]
+                color = list_bonuses[i][0][3]
+                pk_difficulty = list_bonuses[i][0][2]
+            except:
+                await ctx.channel.send('There was an error...please try again. Ending the sim.')
+                game = False
+                break
+            try:
+                start = " ".join(words[:speed])
             except:
                 continue
-            tu_msg = await ctx.channel.send(question[:mark])
+            tu_msg = await ctx.channel.send(start)
             correct = False
             while edits_left > 0:
                 if correct == True or len(buzzes) == practice_size:
                     break
                 to_date = edits - edits_left
-                if 4+(to_date*5) >= len(words):
-                    looking = words[-1]
+                if speed + (to_date*speed) >= len(words):
+                    updated = " ".join(words[:])
+                    toAdd = ""
                 else:
-                    looking = words[4+(to_date*5)]
-                mark = question.find(looking,mark)+len(looking)
-                await tu_msg.edit(content=question[:mark])
+                    updated = " ".join(words[:speed+(to_date*speed)])
+                    toAdd = " ".join(words[speed+(to_date*speed):])
+                await tu_msg.edit(content=updated)
                 edits_left -= 1
                 try:
-                    buzz_msg = await client.wait_for('message',check=pred_to_use,timeout=2) #BOOKMARK
+                    buzz_msg = await client.wait_for('message',check=pred_to_use,timeout=0.9) #BOOKMARK
                 except asyncio.TimeoutError:
                     None
                 else:
                     if buzz_msg.content.casefold() in ['c sim end','m sim end']:
                         game = False
                         break
-                    elif buzz_msg.content.casefold() == 'buzz':
+                    elif buzz_msg.content.casefold().startswith('buzz'):
                         buzzer =  directory.get(buzz_msg.author.id)
                         answering_team = buzzer.team if not ffa else buzzer
                         buzzes.append(answering_team)
-                        await tu_msg.edit(content=question[:mark]+'**$**')
+                        await tu_msg.edit(content=updated+'**$**')
                         await ctx.channel.send(f'{buzz_msg.author.mention} buzzed :loudspeaker:')
                         res = await take_answer(False,buzzer,edits_left,edits)
                         if res == 'break_loop':
@@ -2155,7 +2297,7 @@ async def sim(ctx,category=None,*difficulty):
                             correct = True
                             bonus_pred_to_use = answering_team.team_pred if not ffa else buzzer.team.team_pred
                             bonus_team = answering_team if not ffa else buzzer.team
-                            await tu_msg.edit(content=question[:mark]+'**$**'+question[mark:])
+                            await tu_msg.edit(content=updated+'**$**'+toAdd)
             if game == False:
                 break
             start = time.time()
@@ -2168,11 +2310,11 @@ async def sim(ctx,category=None,*difficulty):
                     if buzz_msg.content.casefold() in ['c sim end','m sim end']:
                         game = False
                         break
-                    if buzz_msg.content.casefold() == 'buzz':
+                    if buzz_msg.content.casefold().startswith('buzz'):
                         buzzer =  directory.get(buzz_msg.author.id)
                         answering_team = buzzer.team if not ffa else buzzer
                         buzzes.append(answering_team)
-                        await tu_msg.edit(content=question[:mark]+'**$**')
+                        await tu_msg.edit(content=updated+'**$**')
                         await ctx.channel.send(f'{buzz_msg.author.mention} buzzed :loudspeaker:')
                         res = await take_answer(True,buzzer)
                         buzzer.update(res)
@@ -2184,10 +2326,10 @@ async def sim(ctx,category=None,*difficulty):
                             bonus_pred_to_use = answering_team.team_pred if not ffa else buzzer.team.team_pred
                             bonus_team = answering_team if not ffa else buzzer.team
                             correct = True
-                            await tu_msg.edit(content=question[:mark]+'**$**'+question[mark:])
+                            await tu_msg.edit(content=updated+'**$**'+toAdd)
             if not correct:
                 await ctx.channel.send(f'This tossup goes dead...:headstone:\nAnswer:{formatted_answer}')
-            if bonuses == True and correct == True: #FIX ME
+            if bonuses == True and correct == True:
                 ans_player = bonus_team
                 ans_player.bonuses_heard += 1
                 for num in range(3):
@@ -2209,7 +2351,7 @@ async def sim(ctx,category=None,*difficulty):
                     try:
                         msg = await client.wait_for('message', check=bonus_pred_to_use,timeout=300)
                     except asyncio.TimeoutError:
-                        None #FIX ME
+                        None
                     else:
                         if msg.content.casefold() in ['c sim end','m sim end']:
                             game = False
@@ -2312,9 +2454,8 @@ async def join(ctx):
         return m.channel == ctx.channel and m.author == ctx.author and m.content.casefold() in ['a','b']
     info = practice_sim_dict.get(ctx.channel.id)
     team_dict = {'a':3,'b':4}
-    if info:
+    if info and info[1] == 'sim':
         ffa = info[0]
-        cmd_type = info[1]
         moderator = info[2]
         if ffa == True:
             await ctx.channel.send(f'{moderator.mention} Approval for {ctx.author.name} to join? `y` or `n`.')
@@ -2327,12 +2468,8 @@ async def join(ctx):
                 return
             else:
                 if msg.content.casefold() == 'y':
-                    if cmd_type == 'sim':
-                        info[3].players.append(TK_Player(ctx.author,info[3],ctx))
-                        await ctx.channel.send('Joined! :white_check_mark:')
-                    elif cmd_type =='practice':
-                        info[3].players.append(PR_Player(ctx.author,info[3]))
-                        await ctx.channel.send('Joined! :white_check_mark:')
+                    info[3].players.append(TK_Player(ctx.author,info[3],ctx))
+                    await ctx.channel.send('Joined! :white_check_mark:')
                 else:
                     await ctx.channel.send('Rejected...')
         else:
@@ -2354,10 +2491,7 @@ async def join(ctx):
                     return
                 else:
                     if msg.content.casefold() == 'y':
-                        if cmd_type == 'sim':
-                            info[team_dict.get(name_team)].players.append(TK_Player(ctx.author,info[team_dict.get(name_team)],ctx))
-                        elif cmd_type =='practice':
-                            info[team_dict.get(name_team)].players.append(PR_Player(ctx.author,info[team_dict.get(name_team)]))
+                        info[team_dict.get(name_team)].players.append(TK_Player(ctx.author,info[team_dict.get(name_team)],ctx))
                         await ctx.channel.send('Added!')
                     else:
                         await ctx.channel.send('Rejected...')
@@ -2367,7 +2501,7 @@ async def join(ctx):
 @client.command (name='tournament')
 async def tournament(ctx,*tournament):
     try:
-        await add_count(ctx.guild.id)
+        await add_count(ctx,ctx.guild.id)
     except:
         None
     def pred(m):
@@ -2417,7 +2551,7 @@ async def card(ctx,category=None,*terms):
         guild_id = ctx.guild.id
     except:
         guild_id = 0
-    await add_count(guild_id)
+    await add_count(ctx,guild_id)
     if category == None or terms == []:
         await ctx.channel.send('You used the wrong format! Use the command `m card *category* *[difficulty]* *term*`, e.g. `m card sci [3-7] proton` or `m card sci biology all`')#i need access to the other part plz
         return
@@ -2429,7 +2563,7 @@ async def card(ctx,category=None,*terms):
     new_numbers = []
     terms = list(terms)
     if 'filtered' in terms:
-        if (not await premium(guild_id,ctx) or len(ctx.guild.members) > 50) and guild_id != 634580485951193089:
+        if (not await premium(guild_id,ctx)) and guild_id != 634580485951193089:
             embed = discord.Embed (
             title='FACE Bot',
             colour=	0x7dffba,
@@ -2441,6 +2575,26 @@ async def card(ctx,category=None,*terms):
         terms.remove('filtered')
     else:
         raw = True
+    num_limit = 0
+    num_sentences = False
+    if 'limit' in terms:
+        a = terms.index('limit')
+        try:
+            num_limit = int(terms[a+1])
+        except:
+            await ctx.channel.send("Invalid syntax! Please include a valid number after `limit`.")
+            return
+        terms.pop(a+1)
+        terms.remove("limit")
+    if 'sentences' in terms:
+        a = terms.index('sentences')
+        try:
+            num_sentences = int(terms[a+1])
+        except:
+            await ctx.channel.send("Invalid syntax! Please include a valid number after `sentences`.")
+            return
+        terms.pop(a+1)
+        terms.remove("sentences")
     new_numbers = await get_difficulty(terms,ctx,carding)
     for x in terms:
         if x[0] == '[':
@@ -2460,7 +2614,7 @@ async def card(ctx,category=None,*terms):
     if word != '':
         separated_terms.append(word)
     if len(separated_terms) == 0:
-        if not (await premium(guild_id,ctx) == True) or len(ctx.guild.members) > 50 and guild_id != 634580485951193089:
+        if not (await premium(guild_id,ctx) == True) and guild_id != 634580485951193089:
             embed = discord.Embed (
             title='FACE Bot',
             colour=	0x7dffba,
@@ -2474,12 +2628,16 @@ async def card(ctx,category=None,*terms):
     difficulty = new_numbers[:]
     carding.append(ctx.author.id)
     await ctx.channel.send(f'Beginning the carding process... Estimated time: `Up to five minutes...`')
-    try:
-        result = await FACE.get_csv(separated_terms,category,ctx.author.id,difficulty,term_by_term,raw)
-    except:
-        await ctx.channel.send('There was a problem! Please try again.')
-        carding.remove(ctx.author.id)
-        return
+    to_card = '\n'.join([f"*{x}*" for x in separated_terms]) if len(separated_terms) > 0 else category
+    to_difficulty = ', '.join([str(x) for x in difficulty]) if len(difficulty) > 0 else "all"
+    to_limit = num_limit if num_limit > 0 else "None"
+    await ctx.channel.send(f"**Carding:**\n {to_card}\n**Difficulty**: {to_difficulty}\n**Limit**:{to_limit}")
+    # try:
+    result = await FACE.get_csv(separated_terms,category,ctx.author.id,difficulty,term_by_term,raw,num_sentences,num_limit)
+    # except:
+    #     await ctx.channel.send('There was a problem! Please try again.')
+    #     carding.remove(ctx.author.id)
+    #     return
     if result == None:
         await ctx.channel.send('That is not a valid category!')
         carding.remove(ctx.author.id)
@@ -2498,6 +2656,436 @@ async def card(ctx,category=None,*terms):
     await asyncio.sleep(7)
     os.remove(full_path)
     carding.remove(ctx.author.id)
+@client.command (name='progress')
+async def progress(ctx,cat=None):
+    mydb, mycursor = mysql_connect()
+    def check(reaction, user):
+        return user.id == ctx.author.id
+    async def take_answer(end_question,author,edits_left=0,total_edits=0):
+        cdepth = (total_edits - edits_left)/total_edits * 100 if total_edits > 0 else 0
+        cdepth = 100 if cdepth == 0 else cdepth
+        try:
+            msg = await client.wait_for('message', check=pred_to_use,timeout=10)
+        except asyncio.TimeoutError:
+            add_points = -5 if end_question == False else 0
+            await ctx.channel.send(f':x: `{add_points}`')
+            await ctx.channel.send(formatted_answer)
+        else:
+            if msg.content.startsiwht('m skip'):
+                skip = True
+                return 'break_loop'
+            if msg.content != 'm tk end':
+                def find_ans(ans,key):
+                    if ans.find(key)==-1:
+                        return
+                    else:
+                        first = ans.find(key)+2
+                    second = ans.find(key,first)
+                    new_str = ans[first:second]
+                    return new_str
+                underlined_portion = find_ans(formatted_answer,'__')
+                underlined_portion = find_ans(formatted_answer,'**') if underlined_portion == None else underlined_portion
+                underlined_portion = underlined_portion.casefold() if underlined_portion else underlined_portion
+                no_response = 0
+                similarity = fuzz.ratio(raw_answer.casefold(),msg.content.casefold())
+                current_tu = tu_msg.content.replace("**$**","")
+                if similarity > 80 or msg.content.casefold() == underlined_portion:
+                    add_points = 15 if ('*' not in current_tu and '*' in question) else 10
+                    await ctx.channel.send(f'`{add_points}`')
+                    correct = True
+                else:
+                    add_points = -5 if end_question == False else 0
+                    await ctx.channel.send(f':x: `{add_points}`')
+                    player_up.answerlines_missed.append(raw_answer)
+                    correct = False
+                await ctx.channel.send(f'ANSWER: {formatted_answer}')
+                given_abbrev = msg.content.casefold().strip()
+                real_abbrev = ''.join([x[0] for x in raw_answer.casefold().split()])
+                if (10 <= similarity <= 75 or (msg.content.casefold() in formatted_answer.casefold()) or has_num(msg.content.casefold()) or has_num(raw_answer.casefold()) or given_abbrev == real_abbrev) and correct == False:   #;  where should this go follow m
+                    await ctx.channel.send('Were you correct? Respond with `y` or `n`')
+                    try:
+                        msg = await client.wait_for('message', check=pred_to_use,timeout=10)
+                    except asyncio.TimeoutError:
+                        None
+                    else:
+                        if msg.content != 'm tk end':
+                            if msg.content.lower().startswith('n'):
+                                add_points = -5 if end_question == False else 0
+                                await ctx.channel.send(f':x: `{add_points}`')
+                            elif msg.content.lower().startswith('y'):
+                                correct = True
+                                add_points = 15 if ('*' not in current_tu and '*' in question) else 10
+                                player_up.answerlines_missed.remove(raw_answer)
+                                await ctx.channel.send(f'`{add_points}`')
+                            else:
+                                add_points = -5 if end_question == False else 0
+                                await ctx.channel.send('Not a valid response! :x: `-5`')
+                        else:
+                            return 'end'
+            else:
+                return 'end'
+        return add_points,1,cdepth
+    def buzz_pred_to_use(m):
+        if ((m.author == ctx.author) and m.channel == ctx.channel) and m.channel == ctx.channel:
+            for p in ['buzz','m skip','m tk end','c tk end']:
+                if m.content.casefold().startswith(p):
+                    return True
+            return False
+    def pred_to_use(m):
+        return ((m.author == ctx.author) and m.channel == ctx.channel) and m.channel == ctx.channel and not m.content.startswith('~')
+    class Team():
+        def __init__(self):
+            self.total_points = 0
+            self.total_pk_points = 0
+            self.tossups_heard = 0
+            self.powers = 0
+            self.tens = 0
+            self.negs = 0
+            self.difficulties = []
+            self.pk_difficulties = []
+            self.answerlines_missed = []
+            self.cdepths = []
+            self.thirties = 0
+            self.bonuses_heard = 0 #fixing
+        def update(self,res,tk_difficulty):
+            points = res[0]
+            cdepth = res[2]
+            self.cdepths.append(cdepth)
+            self.total_points += points
+            self.difficulties.append(tk_difficulty)
+            self.tossups_heard += 1
+            if points == 15:
+                self.powers += 1
+            elif points == 10:
+                self.tens += 1
+            elif points == -5:
+                self.negs += 1
+        def pk_update(self,points,pk_difficulty):
+            self.total_pk_points += points
+            self.pk_difficulties.append(pk_difficulty)
+            self.bonuses_heard += 1
+            if points == 30:
+                self.thirties += 1
+        def get_cdepth(self):
+            cdepth = 0 if len(self.cdepths) == 0 else sum(self.cdepths)/len(self.cdepths)
+            return cdepth
+        def get_ppg(self):
+            ppg = 0 if (self.tossups_heard == 0) else 20*(self.total_points/self.tossups_heard)
+            return ppg
+        def get_diff(self):
+            avg_diff = 0 if len(self.difficulties) == 0 else sum(self.difficulties)/len(self.difficulties)
+            return avg_diff
+        def get_pk_diff(self):
+            avg_diff = 0 if len(self.pk_difficulties) == 0 else sum(self.pk_difficulties)/len(self.pk_difficulties)
+            return avg_diff
+        def get_stat_line(self):
+            stats = f'{self.powers}/{self.tens}/{self.negs}'
+            return stats
+        def get_ppb(self):
+            ppb = 0 if (self.bonuses_heard == 0) else (self.total_pk_points/self.bonuses_heard)
+            return ppb
+        async def get_embed(self,category):
+            ppg = self.get_ppg()
+            embed = discord.Embed (
+            title=f'PROGRESS RESULTS:',
+            colour=	0x303845,
+            timestamp=datetime.datetime.now()
+            )
+            embed.set_thumbnail(url=ctx.author.avatar_url)
+            embed.add_field(name='**PP20TUH**:',value=f'{ppg:.3f}')
+            embed.add_field(name='POWERS:',value=f'{self.powers}',inline = True)
+            embed.add_field(name='Total Points:',value=f'{self.total_points}',inline = True)
+            embed.add_field(name='Avg diff.', value=f'{self.get_diff():.2f}')
+            embed.add_field(name='Category',value=f'{category.upper()}')
+            embed.add_field(name='Tossups Seen:',value=f'{self.tossups_heard}',inline = True)
+            embed.add_field(name='Stats', value=f'{self.get_stat_line()}',inline=False)
+            embed.add_field(name=f'C-Depth:',value=f'{self.get_cdepth():.2f}',inline=False)
+            return embed
+        async def get_pk_embed(self,category):
+            ppb = self.get_ppb()
+            embed = discord.Embed (
+            title=f'BONUS RESULTS:',
+            colour=	0x303845,
+            timestamp=datetime.datetime.now()
+            )
+            embed.set_thumbnail(url=ctx.author.avatar_url)
+            embed.add_field(name='**PPB**:',value=f'{ppb:.3f}')
+            embed.add_field(name='30 30 30:',value=f'{self.thirties}',inline = True)
+            embed.add_field(name='Total Points:',value=f'{self.total_pk_points}',inline = True)
+            embed.add_field(name='Avg diff.', value=f'{self.get_pk_diff():.2f}')
+            embed.add_field(name='Category',value=f'{category.upper()}')
+            embed.add_field(name='Bonuses Seen:',value=f'{self.bonuses_heard}',inline = True)
+            return embed
+        def get_progress_score(self):
+            return (100/self.get_cdepth()) * (1.3 **self.get_diff()) * ((self.tens + self.powers)/15) * 8
+        def get_pk_progress_score(self):
+            return (1.3 ** self.get_pk_diff()) * (self.get_ppb() / 10) * 7
+        async def get_answerlines(self,player):
+            cards = player.answerlines_missed
+    if cat == None:
+        await ctx.channel.send("Please include a category! Example: `m progress sci` `m progress hist`. View category abbreviations with `m cats`")
+        return
+    if ctx.author.id in in_progress:
+        if cat == 'end':
+            await ctx.channel.send('You cannot end a progress check in!')
+            return
+        elif cat == 'end-force':
+            if ctx.author.id in close_progress:
+                close_progress.remove(ctx.author.id)
+            in_progress.remove(ctx.author.id)
+            await ctx.channel.send("Progress tracker ended.")
+        else:
+            await ctx.channel.send('You are already in a progress check in! Use `m progress end-force` if you aren\'t in a progress check in.')
+        return
+
+    elif cat == 'end':
+        await ctx.channel.send('You are not in a progress check-in!')
+        return
+    category = FACE.first_cat_dict.get(cat)
+    if not category:
+        await ctx.channel.send("Please include a valid category! Example: `m progress sci` `m progress hist`. View category abbreviations with `m cats`")
+        return
+    mycursor.execute(f"SELECT * FROM progress WHERE id = {ctx.author.id} AND category = '{category}'")
+    past = mycursor.fetchone()
+    check_in = True
+    diff = 3
+    not_first = False
+    if past:
+        past_scores = json.loads(past[1])
+        not_first = True
+        next_date = past[2]
+        plt.scatter(list(range(1,len(past_scores)+1)),past_scores)
+        plt.xlabel('Score')
+        plt.ylabel('Check-ins')
+        plt.title(f'Your {category.upper()} progress')
+        path = f'temp/{ctx.author.name + category}_progress.png'
+        plt.savefig(path,dpi=200)
+        plt.clf()
+        with open(path, 'rb') as fp:
+            await ctx.channel.send(file=discord.File(fp))
+        if time.time() > next_date:
+            check_in = True
+            prev_adjust_cdepth = past[4]
+            last_diff = past[3]
+            diff = int(last_diff + 1) if prev_adjust_cdepth < 50 else 3
+        else:
+            await ctx.channel.send(f'Your next progress check-in is in **{str(datetime.timedelta(seconds=next_date - time.time()))}**!')
+            check_in = False
+        await asyncio.sleep(2)
+        os.remove(path)
+    if check_in:
+        starter = await ctx.channel.send("You are due for a progress check in! Would you like to start it now? Progress check ins are made up of 15 tossups and 10 bonuses.")
+        await starter.add_reaction('✅')
+        await starter.add_reaction('❌')
+        try:
+            reaction,user = await client.wait_for('reaction_add', timeout=30,check=check)
+        except asyncio.TimeoutError:
+            return False
+        else:
+            if str(reaction.emoji) == '✅':
+                in_progress.append(ctx.author.id)
+                await ctx.channel.send(f"Questions will range from difficulty {diff-1} to {diff+1}! Good luck!")
+                tossups = await FACE.get_tk_tossup(category, [diff-1,diff,diff+1], 15)
+                player_up = Team()
+                id = ctx.author.id
+                for i,q in enumerate(tossups):
+                    await ctx.channel.send(f'\~\~\~\~\~\~\~\~\~\~\~\~**Tossup {i+1}**\~\~\~\~\~\~\~\~\~\~\~\~\~\~\~\~\~\~')
+                    speed = 5 #controls speed of tk
+                    question = q[0][0]
+                    raw_answer = q[0][2]
+                    formatted_answer = q[0][1]
+                    tk_difficulty = q[0][3]
+                    words = q[2]
+                    num_words = len(q[2])
+                    sentences = q[3]
+                    max_words = q[1]
+                    edits = math.ceil(num_words/speed)
+                    edits_left = edits-1
+                    try:
+                        start = " ".join(words[:speed])
+                    except:
+                        continue
+                    tu_msg = await ctx.channel.send(start)
+                    correct = False
+                    while edits_left > 0:
+                        # if id in close_progress:
+                        #     embed = await player_up.get_embed(category)
+                        #     await ctx.channel.send(embed=embed)
+                        #     close_progress.remove(id)
+                        #     in_progress.remove(id)
+                        #     return
+                        to_date = edits - edits_left
+                        if speed + (to_date*speed) >= len(words):
+                            updated = " ".join(words[:])
+                            toAdd = ""
+                        else:
+                            updated = " ".join(words[:speed+(to_date*speed)])
+                            toAdd = " ".join(words[speed+(to_date*speed):])
+                        await tu_msg.edit(content=updated)
+                        edits_left -= 1
+                        try:
+                            buzz_msg = await client.wait_for('message',check=buzz_pred_to_use,timeout=0.9)
+                        except asyncio.TimeoutError:
+                            None
+                        else:
+                            if buzz_msg.content.casefold().startswith('buzz'):
+                                await tu_msg.edit(content=updated+'**$**')
+                                await ctx.channel.send(f'{buzz_msg.author.mention} buzzed :loudspeaker:')
+                                res = await take_answer(False,buzz_msg.author,edits_left,edits)
+                                if res == 'break_loop':
+                                    break
+                                # if id in close_progress:
+                                #     embed = await player_up.get_embed(category)
+                                #     await ctx.channel.send(embed=embed)
+                                #     close_progress.remove(id)
+                                #     in_progress.remove(id)
+                                #     return
+                                if id not in close_progress:
+                                    player_up.update(res,tk_difficulty)
+                                    await asyncio.sleep(2)
+                                await tu_msg.edit(content=updated+'**$**'+toAdd)
+                                correct = True
+                                break
+                    if not correct:
+                        try:
+                            buzz_msg = await client.wait_for('message',check=buzz_pred_to_use,timeout=10)
+                        except asyncio.TimeoutError:
+                            await ctx.channel.send(f'This tossup goes dead...:headstone:\nAnswer:{formatted_answer}')
+                        else:
+                            if buzz_msg.content.casefold():
+                                # if id in close_progress:
+                                #     embed = await player_up.get_embed(category)
+                                #     await ctx.channel.send(embed=embed)
+                                #     close_progress.remove(id)
+                                #     in_progress.remove(id)
+                                #     return
+                                if buzz_msg.content.casefold().startswith('buzz'):
+                                    await tu_msg.edit(content=updated+'**$**')
+                                    await ctx.channel.send(f'{buzz_msg.author.mention} buzzed :loudspeaker:')
+                                    res = await take_answer(True,buzz_msg.author)
+                                    if id not in close_progress:
+                                        player_up.update(res,tk_difficulty)
+                                        await asyncio.sleep(2)
+                                    await tu_msg.edit(content=updated+'**$**'+toAdd)
+                    await asyncio.sleep(2)
+                embed = await player_up.get_embed(category)
+                await ctx.channel.send(embed=embed)
+                tk_score = round(player_up.get_progress_score(),2)
+                await ctx.channel.send(f'Score: {tk_score}')
+                game_end = False
+                bonuses = await FACE.get_bonus(category,[diff-1,diff,diff+1],10)
+                no_response = 0
+                for i in range(10):
+                    avatar = ctx.author.avatar_url
+                    if game_end == True: # or close(id) == True
+                        break
+                    points = 0
+                    possible_points = 0
+                    tournament = bonuses[i][0][1]
+                    leadin = bonuses[i][0][0]
+                    color = bonuses[i][0][3]
+                    pk_difficulty = bonuses[i][0][2]
+                    for num in range(3):
+                        question = bonuses[i][num+1][0]
+                        formatted_answer = bonuses[i][num+1][1]
+                        raw_answer = bonuses[i][num+1][2]
+                        # if game_end == True or id in close_progress:
+                        #     break
+                        possible_points += 10
+                        embed = discord.Embed (
+                        title=f'Question {player_up.bonuses_heard+1} ~ {tournament}',
+                        colour=	0x56cef0,
+                        timestamp=datetime.datetime.now()
+                        )
+                        if color:
+                            embed.colour = color
+                        embed.set_thumbnail(url=avatar)
+                        if num == 0:
+                            embed.add_field(name='\u200b',value = f'{leadin}')
+                        embed.add_field(name='\u200b',value = f'**---**         {question}',inline=False)
+                        embed.set_footer(text='You have 15 seconds...')
+                        await ctx.channel.send(embed=embed)
+                        try:
+                            msg = await client.wait_for('message', check=pred_to_use,timeout=15)
+                        except asyncio.TimeoutError:
+                            await ctx.channel.send(formatted_answer)
+                            # if no_response >= 4:
+                            #     embed = await player_up.get_pk_embed(category)
+                            #     await ctx.channel.send(embed=embed)
+                            #     if id in close_progress:
+                            #         close_progress.remove(id)
+                            #         in_progress.remove(id)
+                            #     game_end = True
+                            #     break
+                            # no_response += 1
+                        else:
+                            if msg.content != 'm progress end':
+                                def find_ans(ans,key):
+                                    if ans.find(key)==-1:
+                                        return
+                                    else:
+                                        first = ans.find(key)+2
+                                    second = ans.find(key,first)
+                                    new_str = ans[first:second]
+                                    return new_str
+                                underlined_portion = find_ans(formatted_answer,'__')
+                                underlined_portion = find_ans(formatted_answer,'**') if underlined_portion == None else underlined_portion
+                                underlined_portion = underlined_portion.casefold() if underlined_portion else underlined_portion
+                                no_response = 0
+                                similarity = fuzz.ratio(raw_answer.casefold(),msg.content.casefold())
+                                if similarity > 80 or msg.content.casefold() == underlined_portion:
+                                    points += 10
+                                    await ctx.channel.send(f'**{points}**/{possible_points} :white_check_mark:')
+                                    correct = True
+                                else:
+                                    await ctx.channel.send(f'**{points}**/{possible_points} :x:')
+                                    correct = False
+                                await ctx.channel.send(f'ANSWER: {formatted_answer}')
+                                given_abbrev = msg.content.casefold().strip()
+                                real_abbrev = ''.join([x[0] for x in raw_answer.casefold().split()])
+                                if (20 <= similarity <= 80 or (msg.content.casefold() in formatted_answer.casefold()) or has_num(msg.content.casefold()) or has_num(raw_answer.casefold()) or given_abbrev == real_abbrev) and correct == False:   #;  where should this go follow m
+                                    await ctx.channel.send('Were you correct? Respond with `y` or `n`')
+                                    try:
+                                        msg = await client.wait_for('message', check=pred_to_use,timeout=10)
+                                    except asyncio.TimeoutError:
+                                        None
+                                    else:
+                                        if msg.content != 'm pk end':
+                                            if msg.content.lower().startswith('n'):
+                                                    await ctx.channel.send(f'**{points}**/{possible_points} :x:')
+                                            elif msg.content.lower().startswith('y'):
+                                                points += 10
+                                                await ctx.channel.send(f'**{points}**/{possible_points} :white_check_mark:')
+                                            else:
+                                                await ctx.channel.send('Not a valid response!')
+                        await asyncio.sleep(0.5)
+                    player_up.pk_update(points,pk_difficulty)
+                embed = await player_up.get_pk_embed(category)
+                await ctx.channel.send(embed=embed)
+                pk_score = round(player_up.get_pk_progress_score(),2)
+                await ctx.channel.send(f'Score: {pk_score}')
+                if not game_end:
+                    next_date = int(time.time() + 345600)
+                    prev_adjusted_cdepth = round(15/(player_up.powers + player_up.tens) * player_up.get_cdepth(),2)
+                    prev_adjusted_cdepth = 99 if prev_adjusted_cdepth > 99 else prev_adjusted_cdepth
+                    if not_first:
+                        past_scores.append(round((pk_score + tk_score) / 2, 2))
+                        last_difficulty = diff
+                        scores = json.dumps(past_scores)
+                        mycursor.execute(f"UPDATE progress SET scores = '{scores}', next_date = {next_date},last_difficulty = {last_difficulty},prev_adjusted_cdepth = {prev_adjusted_cdepth}, reminded = {False} WHERE id = {ctx.author.id} AND category = '{category}'")
+                    else:
+                        scores = json.dumps([round((pk_score + tk_score) / 2, 2)])
+                        last_difficulty = 3
+                        mycursor.execute(f"INSERT INTO progress (id,scores,next_date,last_difficulty,prev_adjusted_cdepth, category, reminded) VALUES ({ctx.author.id},'{scores}',{next_date},{last_difficulty},{prev_adjusted_cdepth},'{category}',{False})")
+                    mydb.commit()
+                    await ctx.channel.send(f'Your score was **{round((pk_score + tk_score) / 2, 2)}**! Good job!')
+                if id in close_progress:
+                    close_progress.remove(id)
+                if id in in_progress:
+                    in_progress.remove(id)
+            elif str(reaction.emoji) == '❌':
+                await ctx.channel.send(f"Use `m progress {cat}` again when you are ready!")
+                return
 
 
 @client.command (name='list')
@@ -2506,7 +3094,7 @@ async def freq(ctx,category=None,*difficulty):
         guild_id = ctx.guild.id
     except:
         guild_id = 0
-    await add_count(guild_id)
+    await add_count(ctx,guild_id)
     if category==None:
         await ctx.channel.send('You did not include a valid category! e.g. `m list fa`')
     if category == None:
@@ -2609,7 +3197,7 @@ async def freq(ctx,category=None,*difficulty):
 @client.command (name='lookup')
 async def lookup(ctx,category,*terms):
     try:
-        await add_count(ctx.guild.id)
+        await add_count(ctx,ctx.guild.id)
     except:
         None
     if category == None or terms == []:
@@ -2632,6 +3220,144 @@ async def lookup(ctx,category,*terms):
         await ctx.channel.send(file=discord.File(fp))
     await asyncio.sleep(2)
     os.remove(path)
+@client.command (name='stats')
+async def stats(ctx,category=None):
+    mydb,mycursor = mysql_connect()
+    try:
+        await add_count(ctx,ctx.guild.id)
+    except:
+        None
+    if category == None:
+        total, rankings = await FACE.get_stats(category)
+        embed = discord.Embed(
+        title = f'QB stats',
+        colour= 0x42f5dd,
+        timestamp=datetime.datetime.now()
+        )
+        for r in rankings:
+            embed.add_field(name=f"{r[0]} score",value=f"{round(r[1],2)}")
+        embed.add_field(name="Total number of questions in QuizDB",value=f"{total}")
+        embed.set_footer(text="A higher score represents a higher difficulty. Difficulty can be subjective and this is only a very rough estimate. Use m stats with a category to see detailed stats for that category (e.g. m stats sci)")
+        await ctx.channel.send(embed=embed)
+        return
+    try:
+        percentage, unique_answers, num_50_perc, num_tossups, embed_color = await FACE.get_stats(category)
+    except Exception as e:
+        await ctx.channel.send("That is not a valid category!")
+        print(e)
+        return
+    embed_color = embed_color if embed_color else 0x42f5dd
+    embed = discord.Embed(
+    title = f'Stats for {category}',
+    colour= embed_color,
+    timestamp=datetime.datetime.now()
+    )
+    redundancy = num_tossups/unique_answers
+    diff = unique_answers/percentage if percentage > 0 else 0
+    embed.add_field(name="Percentage of all questions:", value=f"{percentage:.2f}%")
+    embed.add_field(name="Number of unique answers:",value=f"{unique_answers}")
+    embed.add_field(name="Difficulty score",value=f"{diff/redundancy:.2f}")
+    embed.add_field(name="Smallest number of answerlines needed to comprise 50% of this category",value=f"{num_50_perc}",inline=False)
+    embed.add_field(name="Avg. number of questions per 20 tossups:",value=f"{num_tossups / (FACE.size()/20):.2f}")
+    embed.add_field(name="Redundancy score", value=f"{redundancy:.2f}")
+    await ctx.channel.send(embed=embed)
+@client.command (name='error')
+async def error(ctx):
+    def pred(m):
+        return m.channel.id == ctx.channel.id and m.author.id == ctx.author.id
+    await ctx.channel.send("Which command were you using when the error occurred?")
+    try:
+        msg = await client.wait_for('message', check=pred, timeout=30)
+    except asyncio.TimeoutError:
+        await ctx.channel.send('Timed out, please try again!')
+        return
+    else:
+        error_func = msg.content
+    await ctx.channel.send("What was the error?")
+    try:
+        msg = await client.wait_for('message', check=pred, timeout=30)
+    except asyncio.TimeoutError:
+        await ctx.channel.send('Timed out, please try again!')
+        return
+    else:
+        error_descrip = msg.content
+    await ctx.channel.send("Could you include a screenshot? (optional, respond with `n` if you can't obtain a screenshot)")
+    pic = None
+    try:
+        msg = await client.wait_for('message', check=pred, timeout=30)
+    except asyncio.TimeoutError:
+        None
+    else:
+        if msg.content.lower() != "n" and len(msg.attachments) > 0:
+            pic = msg.attachments[0].url
+    await benji.send(f'**FROM:** {ctx.author.name}#{ctx.author.discriminator}\n**IN:** {ctx.guild.name}\n**ERROR COMMAND:** {error_func}\n**DESCRIPTION:** {error_descrip}\n**PIC:**{pic}')
+    await shoorsen.send(f'**FROM:** {ctx.author.name}#{ctx.author.discriminator}\n**IN:** {ctx.guild.name}\n**ERROR COMMAND:** {error_func}\n**DESCRIPTION:** {error_descrip}\n**PIC:**{pic}')
+    await ctx.channel.send("Error reported! We'll get back to you ASAP.")
+@client.command (name='configure')
+async def configure(ctx, func):
+    def pred(m):
+        return m.author == ctx.author and m.channel == ctx.channel and not m.content.startswith('m cats') and not m.content.startswith('m subcats') #for taking input
+    async def take_answer(ctx): #generic function for taking input from user, returns the msg or returns false if timed out
+        try:
+            msg = await client.wait_for('message',check=pred,timeout=60)
+        except asyncio.TimeoutError:
+            return False
+        else:
+            return msg
+    async def take_reaction(ctx,msg):
+        def check(reaction, user):
+            return user.id == ctx.author.id and str(reaction.emoji) in ['1️⃣','2️⃣']
+        await msg.add_reaction('1️⃣')
+        await msg.add_reaction('2️⃣')
+        try:
+            reaction,user = await client.wait_for('reaction_add', timeout=30,check=check)
+        except asyncio.TimeoutError:
+            return False
+        else:
+            if str(reaction.emoji) == '1️⃣':
+                return 1
+            elif str(reaction.emoji) == '2️⃣':
+                return 2
+    def take_diff(numbers):
+        new_numbers = []
+        numbers = numbers.split(',')
+        for entry in numbers:
+            if '-' in entry:
+                for num in list(range(int(entry[0]),int(entry[-1])+1)):
+                    new_numbers.append(num)
+            else:
+                new_numbers.append(entry)
+        new_numbers = list(map(int,new_numbers))
+        return new_numbers
+    if func == 'pk' or func == 'tk':
+        embed= discord.Embed(
+        title= f'{func.upper()} configurations',
+        colour= 0x42f5dd,
+        timestamp=datetime.datetime.now()
+        )
+        embed.add_field(name="1. Difficulty constraints:", value="Default: `none`",inline=False)
+        embed.add_field(name="2. Category",value="Default: `all`", inline=False)
+        embed.set_footer(text="React with the corresponding number to edit a configuration setting.")
+        configs = await ctx.channel.send(embed=embed)
+        num = await take_reaction(ctx, configs)
+        if not num:
+            await configs.edit(content = 'Configs closed!',embed=None)
+        else:
+            if num == 1:
+                await ctx.channel.send("What would you like to set the default difficulty as? Use dashes to denote a range and use commas for non-consecutive difficulties.\nExamples: `3-5` or `3-4,6` or `3,5`")
+                nums = await take_answer(ctx)
+                difficulty = take_diff(nums.content.replace(' ',''))
+                await ctx.channel.send(difficulty)
+            elif num == 2:
+                await ctx.channel.send("What would you like the default category to be? Use the listed abbrevations from the command `m cats`. Use colons for subcategories in the format shown in the command `m subcats`. Use curly braces and commas for multiple categories.\nExamples:`hist` or `lit:euro` or {hist,sci}")
+                cat = await take_answer(ctx)
+                cat = cat.content.replace(' ','')
+                valid = await FACE.check_category(cat)
+                if valid:
+                    await ctx.channel.send(cat)
+                else:
+                    await ctx.channel.send("You used the wrong format! Please try again.")
+
 
 
 @client.command (name='thoth',aliases=['wizard'])
@@ -2841,13 +3567,17 @@ async def thoth(ctx):
             stage_num += 1
         mycursor.execute(f"UPDATE tournament_info SET stage = {stage_num}") #sets stage number
         mydb.commit()
+@client.command (name='patrons')
+async def patrons(ctx):
+    member_ids = [x.name for x in patron_role.members]
+    await ctx.channel.send(member_ids)
 @client.command (name='guilds')
 async def guilds(ctx):
     if ctx.message.author.id == 435504471343235072 or ctx.message.author.id == 483405210274889728:
         global our_guilds
         list_guilds = [(guild.name,guild.id) for guild in client.guilds if our_guilds.get(guild.id) != None]
         list_guilds.sort(key=lambda x:our_guilds.get(x[1]))
-        list_guilds = [x[0] for x in list_guilds]
+        list_guilds = [x[0] for x in list_guilds][:50]
         await ctx.channel.send(list_guilds[:len(list_guilds)//4])
         await ctx.channel.send(list_guilds[len(list_guilds)//4:len(list_guilds)//2])
         await ctx.channel.send(list_guilds[len(list_guilds)//2:(3*len(list_guilds))//4])
@@ -2867,19 +3597,209 @@ async def guilds(ctx):
         #             pages.append(x[len(x)//2:])
 @client.command (name='review')
 async def review(ctx):
+    def pred(m):
+        return m.author == ctx.author and m.channel == ctx.channel
+    mydb,mycursor = mysql_connect()
+    mycursor.execute(f'SELECT DISTINCT deck FROM cards WHERE id = {ctx.author.id}')
+    table = [x[0] for x in mycursor.fetchall()]
+    pages = []
+    counter = 0
+    while counter < len(table):
+        temp_embed= discord.Embed(
+        title= 'Decks',
+        colour= 0xf0f0f0,
+        timestamp=datetime.datetime.now()
+        )
+        await ctx.channel.send(counter)
+        if counter + 3 > len(table):
+            for num,x in enumerate(table[counter:]):
+                temp_embed.add_field(name=f'**Deck** {(num+1) + (counter)}',value=x,inline=False)
+        else:
+            for num,x in enumerate(table[counter:counter+3]):
+                temp_embed.add_field(name=f'**Deck** {(num+1) + (counter)}',value=x,inline=False)
+        temp_embed.set_footer(text='React with the corresponding number to the deck you would like to review')
+        pages.append(temp_embed)
+        counter+=3
+    if len(pages) > 0:
+        browser = await ctx.channel.send(embed=pages[0])
+    else:
+        temp_embed.add_field(name=f"No decks!",value="\u200b")
+        pages.append(temp_embed)
+        browser = await ctx.channel.send(embed=temp_embed)
+    emojis = ['\u2B05','➡','1️⃣','2️⃣','3️⃣']
+    for i in emojis:
+        await browser.add_reaction(i)
+    def check(reaction, user):
+        nonlocal browser
+        return (str(reaction.emoji) == '⬅' or str(reaction.emoji) == '➡' or str(reaction.emoji) == '1️⃣' or str(reaction.emoji) == '2️⃣' or str(reaction.emoji) == '3️⃣' or str(reaction.emoji) == '4️⃣' or str(reaction.emoji) == '5️⃣' or str(reaction.emoji) == '0️⃣') and user != client.user and reaction.message.id == browser.id and user.id == ctx.author.id
+    start = time.time()
+    page_num = 0
+    chosen = 0
+    new = False
+    while time.time() - start < 30:
+        try:
+            reaction,user = await client.wait_for('reaction_add', timeout=10,check=check)
+        except asyncio.TimeoutError:
+            await ctx.channel.send('')
+        else:
+            if len(pages) == 0:
+                page_num = 0
+            elif str(reaction.emoji) == '⬅':
+                page_num -= 1
+                if abs(page_num) > len(pages):
+                    page_num = -1
+            elif str(reaction.emoji) == '➡':
+                page_num += 1
+                if page_num >= len(pages):
+                    page_num = 0
+            else:
+                if str(reaction.emoji) == '1️⃣':
+                    chosen = 1
+                elif str(reaction.emoji) == '2️⃣':
+                    chosen = 2
+                elif str(reaction.emoji) == '3️⃣':
+                    chosen = 3
+            try:
+                await browser.remove_reaction(str(reaction.emoji),user)
+            except:
+                await ctx.channel.send('Error: Missing permissions. Please enable `manage messages` for the FACE role!')
+                return
+            start = time.time()
+        await browser.edit(embed=pages[page_num])
+
+    await browser.edit(content=f'Decks timed out!',embed=None)
+    try:
+        for emoji in emojis:
+            await browser.clear_reaction(emoji)
+    except:
+        await ctx.channel.send('Please make sure the bot has `manage messages` permissions!')
+    mydb,mycursor = mysql_connect()
+    mycursor.execute(f'SELECT clue, answer FROM cards WHERE id = {ctx.author.id} AND deck = {table[page_num*3+chosen]}')
+    cards = mycursor.fetchall()
+    reviewing = True
+    emojis.extend(['0️⃣','4️⃣','5️⃣'])
+
+
+
+
+
+@client.command (name='add')
+async def add(ctx):
+    def pred(m):
+        return m.author == ctx.author and m.channel==ctx.channel
+    mydb,mycursor = mysql_connect()
+    mycursor.execute(f'SELECT deck FROM cards WHERE id = {ctx.author.id}')
+    table = mycursor.fetchall()
+    dict = {num:deck for num, deck in enumerate(table)}
     embed= discord.Embed(
-    title= 'Card #1/10',
+    title= 'Decks',
     colour= 0xf0f0f0,
     timestamp=datetime.datetime.now()
     )
-    embed.add_field(name='This would be the front of the card.',value='\u200b')
-    embed.set_footer(text='Add reactions based on what you would like to do.')
+    if len(table) == 0:
+        embed.add_field(name="Try `m create` to make a deck.",value='\u200b')
+        return
+    else:
+        for num, deck in dict:
+            embed.add_field(name=num,value=deck)
+        embed.set_footer(text='Type in the corresponding number to the deck you wish to add to')
     msg = await ctx.channel.send(embed=embed)
-    await msg.add_reaction('\u2B05')
-    await msg.add_reaction('\u27A1')
-    await msg.add_reaction('\U0001F534')
-    await msg.add_reaction('\U0001F7E1')
-    await msg.add_reaction('\U0001F7E2')
+    deck = dict[await client.wait_for('message',timeout=30,check=pred)]
+
+    await ctx.channel.send("Send the content of the front of the card. Then send the content of the back of the card (answerline) in a separate message.")
+    try:
+        front = await client.wait_for('message',timeout=30,check=pred)
+        back = await client.wait_for('message',timeout=30,check=pred)
+    except asyncio.TimeoutError:
+        await ctx.send('You did not respond in time!')
+    else:
+        mycursor.execute(f'INSERT INTO cards ')
+        mydb.commit()
+
+
+@client.command (name='import')
+async def import_cards(ctx):
+    def pred(m):
+        return m.author == ctx.author and m.channel == ctx.channel
+    mydb,mycursor = mysql_connect()
+    mycursor.execute(f'SELECT DISTINCT deck FROM cards WHERE id = {ctx.author.id}')
+    table = [x[0] for x in mycursor.fetchall()]
+    pages = []
+    counter = 0
+    while counter < len(table):
+        temp_embed= discord.Embed(
+        title= 'Decks',
+        colour= 0xf0f0f0,
+        timestamp=datetime.datetime.now()
+        )
+        await ctx.channel.send(counter)
+        if counter + 3 > len(table):
+            for num,x in enumerate(table[counter:]):
+                temp_embed.add_field(name=f'**Deck** {(num+1) + (counter)}',value=x,inline=False)
+        else:
+            for num,x in enumerate(table[counter:counter+3]):
+                temp_embed.add_field(name=f'**Deck** {(num+1) + (counter)}',value=x,inline=False)
+        temp_embed.set_footer(text='React with the corresponding number to the deck you would like to import to')
+        pages.append(temp_embed)
+        counter+=3
+    if len(pages) > 0:
+        browser = await ctx.channel.send(embed=pages[0])
+    else:
+        temp_embed.add_field(name=f"No decks!",value="\u200b")
+        pages.append(temp_embed)
+        browser = await ctx.channel.send(embed=temp_embed)
+    emojis = ['\u2B05','➡','1️⃣','2️⃣','3️⃣','🆕']
+    await browser.add_reaction('\u2B05')
+    await browser.add_reaction('➡')
+    await browser.add_reaction('1️⃣')
+    await browser.add_reaction('2️⃣')
+    await browser.add_reaction('3️⃣')
+    await browser.add_reaction('🆕')
+    def check(reaction, user):
+        nonlocal browser
+        return (str(reaction.emoji) == '⬅' or str(reaction.emoji) == '➡' or str(reaction.emoji) == '1️⃣' or str(reaction.emoji) == '2️⃣' or str(reaction.emoji) == '3️⃣' or str(reaction.emoji) == '🆕') and user != client.user and reaction.message.id == browser.id and user.id == ctx.author.id
+    start = time.time()
+    page_num = 0
+    chosen = 0
+    while time.time() - start < 30:
+        try:
+            reaction,user = await client.wait_for('reaction_add', timeout=30,check=check)
+        except asyncio.TimeoutError:
+            None
+        else:
+            start = time.time()
+            if len(pages) == 0:
+                page_num = 0
+            elif str(reaction.emoji) == '⬅':
+                page_num -= 1
+                if abs(page_num) > len(pages):
+                    page_num = -1
+            elif str(reaction.emoji) == '➡':
+                page_num += 1
+                if page_num >= len(pages):
+                    page_num = 0
+            else:
+                if str(reaction.emoji) == '1️⃣':
+                    chosen = 0
+                elif str(reaction.emoji) == '2️⃣':
+                    chosen = 1
+                elif str(reaction.emoji) == '3️⃣':
+                    chosen = 2
+                deck = table[page_num*3+chosen]
+                await ctx.channel.send(f"{deck}")
+                #msg = await client.wait_for('message',timeout=30,check=pred)
+            try:
+                await browser.remove_reaction(str(reaction.emoji),user)
+            except:
+                await ctx.channel.send('Error: Missing permissions. Please enable `manage messages` for the FACE role!')
+                return
+        await browser.edit(embed=pages[page_num])
+    await browser.edit(content=f'Decks timed out!',embed=None)
+    try:
+        for emoji in emojis:
+            await browser.clear_reaction(emoji)
+    except:
+        await ctx.channel.send('Please make sure the bot has `manage messages` permissions!')
 
 @client.event
 async def on_message(msg):# we do not want the bot to reply to itself
@@ -2889,7 +3809,7 @@ async def on_message(msg):# we do not want the bot to reply to itself
         return m.author == msg.author and m.channel == msg.channel
     await client.process_commands(msg)
 #start up
-@client.event
+@client.event #s
 async def on_ready():
     print('Logged in as')
     print(client.user.name)
@@ -2898,6 +3818,7 @@ async def on_ready():
     global bot_guild,patron_role
     bot_guild = client.get_guild(767772426280894474)
     patron_role = bot_guild.get_role(767776503114366978)
+    print(patron_role.members)
     update_premium.start()
     update_trial.start()
     global our_guilds

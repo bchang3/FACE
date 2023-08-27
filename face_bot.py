@@ -29,7 +29,7 @@ from PIL import Image
 class TopGG(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6Ijc0Mjg4MDgxMjk2MTIzNTEwNSIsImJvdCI6dHJ1ZSwiaWF0IjoxNjA1NTc4OTE5fQ.-WkgMZWBsNERkwkT2ydtyLNe3alfTsOTUWD64aCZA4M' # set this to your DBL token
+        self.token = 'PRIVATE' # set this to your DBL token
         self.dblpy = dbl.DBLClient(self.bot, self.token,autopost=True,webhook_path='/dblwebhook', webhook_auth='uwu', webhook_port=5000)
     async def on_guild_post():
         print("Server count posted successfully")
@@ -58,7 +58,7 @@ def setup(bot):
     bot.add_cog(clib)
 
 PREFIX = ['<@742880812961235105> ','m','M ']
-token='NzQyODgwODEyOTYxMjM1MTA1.XzMjqw.SamNiyezNdCrzRzTQXh2h5SYsfE'
+token='PRIVATE' #set this to the Discord Application token
 intents = discord.Intents.default()
 intents.members = True
 client = Bot(command_prefix=PREFIX,intents=intents)

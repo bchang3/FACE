@@ -14,7 +14,7 @@ FACE (Fully-Automated-Card-Extractor) was created to make studying for scholasti
 
 # Example
 
-Flashcards for "Albert Einstein"
+Flashcards generated for "Albert Einstein" (5 out of 97 flashcards shown)
 * "This man proposed a model which helped to explain the Dulong-Petit law at high energies, and he said quantum entanglement was “spooky action at a distance”."   
 * "This man’s paper “On the Electrodynamics of Moving Bodies” was part of his groundbreaking Annus Mirabilis papers, which he published while working at a patent office in Bern."  
 * "This scientist proposed that an object’s length would appear to shorten if it is travelling near the speed of light, and won the Nobel Prize for his work on the photoelectric effect."   

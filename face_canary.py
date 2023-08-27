@@ -28,7 +28,7 @@ import pandas as pd
 import requests
 import json
 PREFIX = ['c ','C ']
-token='NzcwNzY5NDk5MzA1NjcyNzU0.X5iZCA.rrqAHZ_GzKtidTYf7S5Gj9NAn6U'
+token='PRIVATE' #token is private and cannot be shared
 intents = discord.Intents.default()
 intents.members = True
 client = Bot(command_prefix=PREFIX,intents=intents)

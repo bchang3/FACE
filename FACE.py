@@ -6,13 +6,18 @@ import os
 import nltk.data
 import nltk
 from nltk.tokenize import sent_tokenize,word_tokenize
+from nltk.corpus import stopwords
 import csv
 import asyncio
 import psycopg2
 from sentence_similarity import compare_sentences
 import random
 from asgiref.sync import sync_to_async
-import matplotlib.pyplot as plt #why are you always on the file i dont need open
+import matplotlib.pyplot as plt
+import mysql.connector as mysql
+size_db = 98934
+def size():
+    return size_db
 def postgres_connect():
     conn = psycopg2.connect(
     host = 'localhost',
@@ -22,6 +27,15 @@ def postgres_connect():
     )
     cur = conn.cursor()
     return conn, cur
+def mysql_connect():
+    mydb = mysql.connect(
+      host="127.0.0.1",
+      user="root",
+      password="Please!2",
+      database="face_log"
+    )
+    mycursor = mydb.cursor(buffered=True)
+    return mydb, mycursor
 color_dict = {
     17:0x34cf53, #science
     15:0xc73232, #literature
@@ -47,6 +61,19 @@ first_cat_dict = {
     'geo': 'geography',
     'ce':  'current events',
     'philo': 'philosophy'
+}
+abbrev_dict = {
+    'science': 'sci',
+    'fine arts': 'fa',
+    'mythology': 'myth',
+    'religion': 'religion',
+    'trash': 'trash',
+    'social science': 'ss',
+    'literature': 'lit',
+    'history': 'hist',
+    'geography': 'geo',
+    'current events':  'ce',
+    'philosophy': 'philo'
 }
 first_subcat_dict = {
     'ce:usa': 'Current Events American',
@@ -173,7 +200,17 @@ first_subcat_dict = {
     'trash:vg': 'Trash Video Games',
 }
 conn, cur = postgres_connect()
-
+mydb, mycursor = mysql_connect()
+def clean_answer(ans):
+    formatters = [('*',''), (';',''), ('<em>','*'), (r'</em>','*'), ('<strong>','**'), ('</strong>','**'), ('<u>','__'), ('</u>','__'), ('&lt','<'), ('&gt','>')]
+    patterns = [r"\[\D.*\]",r"\&lt\D.*\&gt", r'\(.*?\)',r'\{.*?\}', r" For 10 points, .*?\w ", r"For 10 points each.*", r"\n\d"]#r'&.*'
+    replacements = ['No. ', 'no. ', 'et. al.', 'et al.','Â', '►', '\(', '\)', 'Sgt.']
+    for i in patterns:
+        ans = re.sub(i, '', ans)
+    for char in formatters:
+        if char[0] in ans:
+            ans = ans.replace(char[0],'')
+    return ans.strip()
 cat_dict = dict()
 reverse_cat_dict = dict()
 cur.execute('SELECT * FROM categories')
@@ -199,6 +236,20 @@ for row in tournament_rows:
     cur.execute(f'SELECT id FROM tossups WHERE tournament_id = {row[0]}')
     count = len(cur.fetchall())
     total_difficulties[int(row[3])-1] += count
+difficulty_rankings = []
+for cat in first_cat_dict.values():
+    id = cat_dict.get(cat)
+    executor = f"SELECT answer FROM tossups WHERE category_id = {id}"
+    cur.execute(executor)
+    tossups = cur.fetchall()
+    tossups = [x[0] for x in tossups]
+    tossups = list(map(clean_answer,tossups))
+    unique_tossups = [(x,tossups.count(x)) for x in set(tossups)]
+    percentage = round(len(tossups)/size_db,4) * 100
+    diff = len(unique_tossups)/percentage
+    redundancy = len(tossups)/len(unique_tossups)
+    difficulty_rankings.append((cat,diff/redundancy))
+difficulty_rankings.sort(reverse=True,key=lambda x:x[1])
 
 def last_two(arr):
     new = (arr[1],arr[2])
@@ -316,7 +367,7 @@ async def lookup(query,category):
         values = (category,)
     elif query == None and subcategory != None:
         executor = f"SELECT tournament_id,answer FROM tossups WHERE subcategory_id = %s"
-        values = (subcategory)
+        values = (subcategory,)
     else:
         query = query.replace(' ',' & ')
         if subcategory:
@@ -344,6 +395,40 @@ async def lookup(query,category):
         y.append(count)
     y = [count/total_difficulties[i-1]*200 for i,count in enumerate(y)]
     return x,y
+async def get_stats(category):
+    conn, cur = postgres_connect()
+    mydb, mycursor = mysql_connect()
+    subcategory = None
+    if category:
+        subcategory = category
+        if first_cat_dict.get(category.casefold()):
+            category = first_cat_dict.get(category.casefold())
+        elif first_subcat_dict.get(category.casefold()):
+            subcategory = first_subcat_dict.get(category.casefold())
+        orig_category = category
+        category = cat_dict.get(category.casefold())
+        orig_subcategory = subcategory
+        subcategory = subcat_dict.get(subcategory.casefold())
+    if category == None and subcategory == None:
+        return (size_db, difficulty_rankings)
+    elif subcategory == None:
+        full_category = True
+        id = category
+
+    else:
+        full_category = False
+        id = subcategory
+    color = color_dict.get(int(id))
+    values = (id,)
+    mycursor.execute(f"SELECT num_percent_50,num_tossups,num_unique_tossups FROM stats WHERE cat_id = %s AND full_category = {full_category}",(id,))
+    info = mycursor.fetchone()
+    counter = info[0]
+    num_tossups = info[1]
+    num_unique_tossups = info[2]
+    percentage = round(num_tossups/size_db,4) * 100
+    return (percentage, num_unique_tossups, counter, num_tossups, color)
+
+
 def get_cat_id(category_name):
     category = category_name
     if category_name in first_cat_dict:
@@ -359,7 +444,23 @@ def get_cat_id(category_name):
             return None
     else:
         return f'category_id = {id}'
-async def get_bonus(category,difficulty):
+async def check_category(category):
+    curly_search =  re.search(r'\{(.*?)\}',category)
+    if curly_search:
+        categories = curly_search.group(1).split(',')
+        category_ids = list(map(get_cat_id,categories))
+        if len(category_ids) == 0:
+            return
+        for x in category_ids.copy():
+            if x == None:
+                return
+        conditions = category_ids
+    else:
+        category_ids = get_cat_id(category)
+        if category_ids == None:
+            return
+    return True
+async def get_bonus(category,difficulty,to_retrieve=4):#soccer
     conn, cur = postgres_connect()
     curly_search =  re.search(r'\{(.*?)\}',category)
     if curly_search:
@@ -400,7 +501,7 @@ async def get_bonus(category,difficulty):
     try:
         for result in results:
             num_bonuses += len(result)
-            sampled = sampled + random.sample(result,4)
+            sampled = sampled + random.sample(result,to_retrieve)
     except:
         return 'not enough'
     results = sampled
@@ -428,7 +529,7 @@ async def get_bonus(category,difficulty):
     misc = (num_bonuses,category.capitalize())
     bonuses.append(misc)
     return bonuses
-async def get_tk_tossup(category,difficulty):
+async def get_tk_tossup(category,difficulty,to_retrieve=4):
     conn, cur = postgres_connect()
     curly_search =  re.search(r'\{(.*?)\}',category)
     if curly_search:
@@ -468,7 +569,7 @@ async def get_tk_tossup(category,difficulty):
     try:
         for result in results:
             num_tossups += len(result)
-            sampled = sampled + random.sample(result,4)
+            sampled = sampled + random.sample(result,to_retrieve)
     except:
         return 'not enough'
     results = sampled
@@ -479,12 +580,12 @@ async def get_tk_tossup(category,difficulty):
         return 'error'
     for i,question in enumerate(results):
         q = question[0]
-        words = word_tokenize(q)
+        words = q.split()
         sentences = sent_tokenize(q)
         max_words = max([len(word_tokenize(x)) for x in sentences])
         num_sent = len(sentences)
         results[i] = (question,max_words,words,num_sent)
-    return results[:4]
+    return results[:to_retrieve]
 async def get_tournament(tournament,category):
     subcategory = None
     if category != None:
@@ -610,16 +711,7 @@ def new_complete_replace_line_tk(question):
     else:
         final = (s, orig_a.strip(),a.strip(),diff)
     return final
-def clean_answer(ans):
-    formatters = [('*',''), (';',''), ('<em>','*'), (r'</em>','*'), ('<strong>','**'), ('</strong>','**'), ('<u>','__'), ('</u>','__'), ('&lt','<'), ('&gt','>')]
-    patterns = [r"\[\D.*\]",r"\&lt\D.*\&gt", r'\(.*?\)',r'\{.*?\}', r" For 10 points, .*?\w ", r"For 10 points each.*", r"\n\d"]#r'&.*'
-    replacements = ['No. ', 'no. ', 'et. al.', 'et al.','Â', '►', '\(', '\)', 'Sgt.']
-    for i in patterns:
-        ans = re.sub(i, '', ans)
-    for char in formatters:
-        if char[0] in ans:
-            ans = ans.replace(char[0],'')
-    return ans.strip()
+
 async def make_bonus_cards(cards,id):
     full_path = f"temp/pk_{id}_cards.csv"
     try:
@@ -633,36 +725,49 @@ async def make_bonus_cards(cards,id):
             card_writer = csv.writer(card_csv, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
             card_writer.writerow([question,answer])
     return full_path
-async def get_csv(terms,category,id, difficulty,term_by_term,raw):
-    async def write_csv(tossups,raw,term=None):
+async def get_csv(terms,category,id, difficulty,term_by_term,raw, num_sentences,num_limit=0):
+    async def write_csv(tossups,raw,num_sentences,term=None):
         clues = []
+        writing = []
         excess = 0
         nonlocal total_cards
         questions = list(map(new_complete_replace_line,tossups))
         for question,answer in questions:
             if term != None and term.casefold() not in answer.casefold():
                 continue
-            sentences = await sync_to_async(sent_tokenize)(question)
-            with open(full_path, mode='a') as card_csv:
-                for sentence in sentences:
-                    sentence = sentence.replace('  ', ' ')
-                    if sentence == '':
+            try:
+                sentences = await sync_to_async(sent_tokenize)(question) #tokenzied sentences in a tossup
+            except:
+                continue
+            num_sentences = num_sentences if num_sentences else len(sentences)
+            for sentence in sentences[:num_sentences]: #iterating over each sentence
+                orig_sentence = sentence
+                if sentence == '':
+                    continue
+                # sentence = sentence.replace('  ', ' ')
+                # sentence = ' '.join([w for w in word_tokenize(sentence) if w not in stopwords.words('english')])
+                duplicate = False
+                if raw == False:
+                    for clue in clues: #list of clues being built, each new clue is compared to all old clues before it
+                        if clue[1] == answer:
+                            score = await sync_to_async(compare_sentences)(clue[0],sentence)
+                            if score > 0.55:
+                                excess += 1
+                                duplicate = True
+                                break
+                    if duplicate == True:
                         continue
-                    duplicate = False
-                    if raw == False:#open thebotfile
-                        for clue in clues:
-                            if clue[1] == answer:
-                                score = await sync_to_async(compare_sentences)(clue[0],sentence)
-                                if  score > 0.43:
-                                    excess += 1
-                                    duplicate = True
-                                    break
-                        if duplicate == True:
-                            continue
-                    card_writer = csv.writer(card_csv, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-                    card_writer.writerow([sentence,answer])
-                    clues.append((sentence,answer))
-                    total_cards += 1
+                writing.append([orig_sentence, answer])
+                clues.append((sentence,answer))
+                total_cards += 1
+        with open(full_path, mode='a') as card_csv:
+            if num_limit > 0 and num_limit < total_cards:
+                writing = random.choices(writing, k=num_limit)
+            for packet in writing:
+                card_writer = csv.writer(card_csv, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+                card_writer.writerow(packet)
+            total_cards = len(writing)
+
     total_cards = 0
     full_path = f"temp/{category}{id}_cards.csv"
     try:
@@ -676,12 +781,12 @@ async def get_csv(terms,category,id, difficulty,term_by_term,raw):
             tossups = await get_tossup(term,category,difficulty)
             if tossups == None:
                 return None
-            await write_csv(tossups,raw,term)
+            await write_csv(tossups,raw,num_sentences,term)
     else:
         tossups = await get_tossup(None,category,difficulty)
         if tossups == None:
             return None
-        await write_csv(tossups,raw)
+        await write_csv(tossups,raw,num_sentences)
     return full_path, total_cards
 async def get_csv_tournament(tournament,category):
     def write_csv_tournament(tossups):
@@ -716,8 +821,8 @@ async def get_csv_tournament(tournament,category):
 def main():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    result = loop.run_until_complete(get_frequency('geo',[3,4,5],None))
-    print(result)
+    result = loop.run_until_complete(get_csv(['Max Planck'],'SCI',123, [3,4,5],True,False))#did you test it
+    print(result)#
     # result = loop.run_until_complete(get_csv_tournament('ANFORTAS'))
     # result = loop.run_until_complete(lookup('Rautavaara','fa'))
     # result = loop.run_until_complete(get_csv(['Albert Einstein'],'Science',5,[],True))

@@ -15,12 +15,11 @@ FACE (Fully-Automated-Card-Extractor) was created to make studying for scholasti
 # Example
 
 Flashcards for "Albert Einstein"
-This man proposed a model which helped to explain the Dulong-Petit law at high energies, and he said quantum entanglement was “spooky action at a distance”."   
-"This man’s paper “On the Electrodynamics of Moving Bodies” was part of his groundbreaking Annus Mirabilis papers, which he published while working at a patent office in Bern."  
-"This scientist proposed that an object’s length would appear to shorten if it is travelling near the speed of light, and won the Nobel Prize for his work on the photoelectric effect."   
-"For ten points, name this 20th century physicist who famously stated that energy is equal to mass times the speed of light squared."   
-"With Elie Cartan, this scientist extended a more famous theory of his to allow modeling of spin-orbit coupling."   
-"Mobility and diffusivity appear in an equation he developed with Smoluchowski."    
+* "This man proposed a model which helped to explain the Dulong-Petit law at high energies, and he said quantum entanglement was “spooky action at a distance”."   
+* "This man’s paper “On the Electrodynamics of Moving Bodies” was part of his groundbreaking Annus Mirabilis papers, which he published while working at a patent office in Bern."  
+* "This scientist proposed that an object’s length would appear to shorten if it is travelling near the speed of light, and won the Nobel Prize for his work on the photoelectric effect."   
+* "With Elie Cartan, this scientist extended a more famous theory of his to allow modeling of spin-orbit coupling."   
+* "Mobility and diffusivity appear in an equation he developed with Smoluchowski."    
 
 # FACE 2.0
 [Face 2.0 Dev Notes](https://docs.google.com/document/d/1cXCwzPsTAQ8tW5LiKwLgzwb1ArkCao7GXa0L9yamrh0/edit)
